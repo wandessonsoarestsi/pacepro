@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#F2F3F5" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0E1013" media="(prefers-color-scheme: dark)">
+<title>PacePro</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23128C83'/%3E%3Cpath d='M18 40a14 14 0 1 1 28 0' fill='none' stroke='%23fff' stroke-width='6' stroke-linecap='round'/%3E%3Cpath d='M32 40l8-10' stroke='%23fff' stroke-width='5' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&display=swap">
+<link rel="stylesheet" href="/styles.css">
+<script>try{var t=localStorage.getItem('sub30.theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <button class="round" id="prevDay" type="button" aria-label="Dia anterior">‹</button>
+    <div class="daylabel"><span id="dayTitle">HOJE</span><small id="daySub"></small></div>
+    <button class="round" id="nextDay" type="button" aria-label="Próximo dia">›</button>
+  </header>
+
+  <main>
+    <!-- HOJE -->
+    <section data-view="hoje" class="view">
+      <div class="card summary">
+        <div class="summary-list">
+          <div class="srow"><span class="dot c1"></span><div><b id="sDays">–</b><small>para a prova</small></div></div>
+          <div class="srow"><span class="dot c2"></span><div><b id="sWeek">–</b><small>treinos da semana</small></div></div>
+          <div class="srow"><span class="dot c3"></span><div><b id="sProj">–</b><small>projeção na prova</small></div></div>
+        </div>
+        <svg class="rings" id="rings" viewBox="0 0 120 120" aria-hidden="true"></svg>
+      </div>
+
+      <div class="card workout" id="workout"></div>
+      <div class="card analysis" id="analysis" hidden></div>
+
+      <div class="tiles">
+        <div class="tile"><span class="lbl">Estimativa hoje</span><b id="tEst">–</b><small id="tEstSub">–</small></div>
+        <div class="tile"><span class="lbl">Meta</span><b id="tGoal">–</b><small id="tGoalSub">–</small></div>
+        <div class="tile"><span class="lbl">Último treino</span><b id="tLast">–</b><small id="tLastSub">–</small></div>
+        <div class="tile"><span class="lbl">Contagem</span><b id="tClock">–</b><small id="tClockSub">até a largada</small></div>
+      </div>
+    </section>
+
+    <!-- PLANO -->
+    <section data-view="plano" class="view" hidden>
+      <div class="pills" id="weekPills" role="tablist" aria-label="Semanas"></div>
+      <div class="card" id="weekNote"></div>
+      <div class="card list" id="weekDays"></div>
+      <button class="btn ghost wide" id="openFull" type="button">Ver o plano completo</button>
+      <div class="card prose" id="fullPlan" hidden></div>
+    </section>
+
+    <!-- PROGRESSO -->
+    <section data-view="progresso" class="view" hidden>
+      <div class="card">
+        <div class="card-head"><h2>Tempo estimado nos 5 km</h2></div>
+        <svg class="chart" id="chart" viewBox="0 0 400 240" role="img" aria-label="Evolução da estimativa de tempo"></svg>
+        <p class="muted small" id="chartHint"></p>
+      </div>
+      <div class="card list">
+        <div class="card-head"><h2>Corridas</h2><span class="muted small" id="runsSrc"></span></div>
+        <div id="runs"></div>
+      </div>
+    </section>
+
+    <!-- AJUSTES -->
+    <section data-view="ajustes" class="view" hidden>
+      <div class="card">
+        <div class="card-head"><h2>Strava</h2><span class="chip" id="stravaChip">–</span></div>
+        <p class="muted" id="stravaText">Conecte para puxar seus treinos e atualizar a estimativa.</p>
+        <div class="row-actions">
+          <a class="btn strava" id="stravaConnect" href="/api/strava/login">Conectar com Strava</a>
+          <button class="btn ghost" id="stravaSync" type="button" hidden>Sincronizar agora</button>
+          <button class="btn ghost" id="stravaOut" type="button" hidden>Desconectar</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>Gerar plano com IA</h2><span class="chip">grátis · Groq</span></div>
+        <p class="muted small">Informe a prova e o objetivo. A IA monta o plano no mesmo formato do site, usando seu nível atual a partir das corridas.</p>
+        <form id="genForm" class="form" novalidate>
+          <label for="gRace">Data da prova<input id="gRace" type="date" required></label>
+          <label for="gStart">Início do plano<input id="gStart" type="date" required></label>
+          <label for="gDist">Distância
+            <select id="gDist"><option value="5">5 km</option><option value="10">10 km</option><option value="21.1">21,1 km</option><option value="42.2">42,2 km</option></select></label>
+          <label for="gGoal">Tempo-objetivo<input id="gGoal" type="text" inputmode="numeric" placeholder="30:00" required></label>
+          <label for="gDays">Corridas por semana
+            <select id="gDays"><option>3</option><option selected>4</option><option>5</option></select></label>
+          <div class="checks">
+            <label for="gSwim"><input id="gSwim" type="checkbox" checked> Natação (ter e qui)</label>
+            <label for="gGym"><input id="gGym" type="checkbox" checked> Musculação (seg a sex)</label>
+          </div>
+          <label for="gNotes" class="full">Observações<textarea id="gNotes" rows="2" placeholder="Ex.: voltando de pausa, treino cedo, prefiro esteira às quartas"></textarea></label>
+          <button class="btn full" id="gBtn" type="submit">Gerar plano</button>
+        </form>
+        <p class="msg" id="genMsg" hidden></p>
+        <div class="row-actions" id="genActions" hidden>
+          <button class="btn" id="gUse" type="button">Usar este plano</button>
+          <a class="btn ghost" id="gDownload" download="plano.md" href="#">Baixar .md</a>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>Plano de treino</h2></div>
+        <p class="muted" id="planInfo">–</p>
+        <div class="row-actions">
+          <label class="btn" for="mdFile">Importar plano (.md)</label>
+          <input id="mdFile" type="file" accept=".md,.markdown,text/markdown,text/plain" hidden>
+          <button class="btn ghost" id="planReset" type="button">Voltar ao plano padrão</button>
+        </div>
+        <p class="muted small">O arquivo precisa seguir o formato do plano atual: linha "Prova:" com a data, linha "Meta:" com o tempo, títulos "### Semana N" e tabelas com Data | Corrida | Esteira | Musculação.</p>
+        <p class="msg" id="planMsg" hidden></p>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>Aparência</h2></div>
+        <div class="pills" id="themePills" role="radiogroup" aria-label="Tema">
+          <button type="button" data-t="system">Sistema</button>
+          <button type="button" data-t="light">Claro</button>
+          <button type="button" data-t="dark">Escuro</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>Dados</h2></div>
+        <p class="muted small">Treinos marcados e análises ficam salvos neste aparelho. Os dados das corridas vêm sempre do Strava.</p>
+        <div class="row-actions"><button class="btn ghost danger" id="clearDone" type="button">Apagar treinos marcados</button></div>
+        <p class="msg" id="clearMsg" hidden></p>
+      </div>
+    </section>
+  </main>
+
+  <nav class="tabbar" aria-label="Navegação">
+    <a href="#hoje" data-tab="hoje"><svg viewBox="0 0 24 24"><path d="M4 11l8-7 8 7v9a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z"/></svg><span>Hoje</span></a>
+    <a href="#plano" data-tab="plano"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg><span>Plano</span></a>
+    <a href="#progresso" data-tab="progresso"><svg viewBox="0 0 24 24"><path d="M4 19h16M6 15l4-4 3 3 5-6"/></svg><span>Progresso</span></a>
+    <a href="#ajustes" data-tab="ajustes"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/></svg><span>Ajustes</span></a>
+  </nav>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+<script src="/plan-parser.js"></script>
+<script src="/analysis.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>

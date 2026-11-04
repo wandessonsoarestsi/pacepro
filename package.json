@@ -1,0 +1,7 @@
+{
+  "name": "pacepro",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Plano de treino de corrida com Strava e IA",
+  "engines": { "node": ">=18" }
+}

@@ -98,6 +98,8 @@
     extra = { ...defaultExtra(), ...((row && row.extra) || {}) };
     applyPlanMd(row && row.plan_md, 'salvo');
     runs = store.get(userKey('runs'), []);
+    // Primeira visita: mostra as boas-vindas em vez do plano de exemplo.
+    if (!row) { extra.fresh = true; saveNow(); }
   }
   function showToast(text, bad) {
     let el = $('toast'); if (!el) { el = document.createElement('div'); el.id = 'toast'; el.className = 'toast'; document.body.appendChild(el); }
@@ -1466,7 +1468,9 @@
       const item = { id: raceEdit && raceEdit !== 'plan' ? raceEdit : 'r' + Date.now().toString(36), name, date, dist, goal, place: $('rfPlace').value.trim(), status: $('rfStatus').value };
       if (raceEdit === 'plan' && plan && date !== plan.race) extra.hidePlanRace = plan.race;
       extra.races = (extra.races || []).filter(x => x.id !== item.id).concat(item);
-      raceEdit = null; raceOpen = item.id; persist(); renderRaceForm(false); renderAll(); showToast('Prova salva.');
+      raceEdit = null; raceOpen = item.id; persist(); renderRaceForm(false); renderAll();
+      if (!plan) { prefillGen(item.dist, item.goal, item.date); showToast(item.goal ? 'Prova salva. Confira o plano e toque em "Usar este plano".' : 'Prova salva. Agora escreva a sua meta para gerar o plano.'); if (!item.goal) setTimeout(() => $('gGoal').focus(), 300); }
+      else showToast('Prova salva.');
     };
   }
 
@@ -1504,12 +1508,19 @@
     else { try { const j = await api('/api/strava/login'); location.href = j.url; } catch (e) { showToast(e.message, true); } }
   };
 
+  function renderWelcome() {
+    const w = $('wStrava'); if (!w) return;
+    w.classList.toggle('ok', strava.connected);
+    const a = w.querySelector('.row-actions');
+    a.innerHTML = strava.connected ? `<span class="chip good">${CHECK}Strava conectado</span>` : strava.checked && strava.configured === false ? '<span class="muted small">Strava indisponível agora.</span>' : '<button class="btn strava" type="button" data-strava-connect>Conectar com Strava</button>';
+  }
+  $('wRace').onclick = () => { location.hash = 'provas'; raceEdit = null; setTimeout(() => renderRaceForm(true), 60); };
   function renderAll() {
     const has = !!plan;
     document.querySelectorAll('[data-no-plan]').forEach(el => { el.hidden = has; });
     document.querySelectorAll('[data-needs-plan]').forEach(el => { el.hidden = !has; });
     if (has) { renderSummary(); renderAdjust(); renderWorkout(); renderDiet(); renderPlan(); renderRace(); renderTest(); renderWeekSum(); renderNext(); }
-    renderProgress(); renderVolume(); renderCadence(); renderZones(); renderWeight(); renderWxSettings(); renderSettings(); renderHr(); renderInstall(); renderUpdate(); renderRaces(); bindStravaButtons(); route();
+    renderProgress(); renderVolume(); renderCadence(); renderZones(); renderWeight(); renderWxSettings(); renderSettings(); renderHr(); renderInstall(); renderUpdate(); renderRaces(); renderWelcome(); bindStravaButtons(); route();
   }
   function bindStravaButtons() {
     document.querySelectorAll('[data-strava-connect]').forEach(b => {
@@ -1541,7 +1552,7 @@
     const q = params.get('strava');
     if (q) history.replaceState(null, '', '/' + location.hash);
     loadState();
-    if (!plan) { try { applyPlanMd(await examplePlanMd(), 'exemplo'); } catch (e) {} }
+    if (!plan && !extra.fresh) { try { applyPlanMd(await examplePlanMd(), 'exemplo'); } catch (e) {} }
     if (plan) { clampSelected(); if (plan.race > today) $('gRace').value = plan.race; if (plan.goalSec) $('gGoal').value = A.fmtTime(plan.goalSec); }
     renderAll();
     fetchVer().then(v => { appVer = v; renderUpdate(); });

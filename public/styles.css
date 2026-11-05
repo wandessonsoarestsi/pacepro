@@ -396,3 +396,14 @@ details.rpast summary{cursor:pointer;font-weight:700;color:var(--c1);padding:6px
 .form .row-actions.full{grid-column:1/-1}
 .rr-end{display:flex;align-items:center;gap:8px}
 .rr-end .chev{color:var(--muted);font-size:12px}
+
+/* Boas-vindas */
+.welcome h3{margin:4px 0 2px}
+.steps{list-style:none;margin:14px 0 6px;padding:0;display:flex;flex-direction:column;gap:12px}
+.steps li{display:grid;grid-template-columns:32px 1fr;gap:12px;background:var(--sunk);border-radius:16px;padding:14px}
+.steps .n{width:32px;height:32px;border-radius:50%;background:var(--c1);color:#fff;display:grid;place-items:center;font-weight:800}
+.steps li.ok .n{background:var(--good)}
+.steps b{display:block;font-size:15.5px}
+.steps small{display:block;margin-top:2px;line-height:1.35}
+.steps .row-actions{margin-top:10px}
+.steps .chip svg{width:14px;height:14px}

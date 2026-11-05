@@ -55,7 +55,7 @@
     if (box) box.remove();
     box = document.createElement('div'); box.id = 'vStudio'; box.className = 'vstudio';
     box.innerHTML = `<div class="vs-bar"><button type="button" class="vs-x">‹ Voltar</button><b>Vídeo da corrida</b><span></span></div>
-      <div class="vs-body"><div class="vs-stage"><canvas class="vs-canvas" width="${W}" height="${H}"></canvas><video class="vs-video" playsinline controls hidden></video></div>
+      <div class="vs-body"><div class="vs-stage"><canvas class="vs-canvas" width="${W}" height="${H}"></canvas><video class="vs-video" playsinline controls hidden></video><div class="vs-load" hidden><div class="vs-lrow"><i class="vs-spin"></i><b class="vs-lt">Preparando…</b><span class="vs-pct"></span></div><div class="vs-pbar"><i></i></div></div></div>
       <p class="vs-msg muted small">Vídeo vertical de uns 20 segundos com o mapa 3D do seu percurso. Deixe o app aberto enquanto ele é gerado.</p>
       <div class="vs-actions"><button type="button" class="btn wide vs-go">Gerar vídeo</button></div></div>
       <div class="vs-map" aria-hidden="true"></div>`;
@@ -65,7 +65,13 @@
     let map = null, stop = false, rec = null, url = null;
     const close = () => { stop = true; try { rec && rec.state !== 'inactive' && rec.stop(); } catch (e) {} try { map && map.remove(); } catch (e) {} if (url) URL.revokeObjectURL(url); box.remove(); document.body.classList.remove('noscroll'); };
     $('.vs-x').onclick = close;
-    const msg = (t, bad) => { const m = $('.vs-msg'); m.textContent = t; m.classList.toggle('bad', !!bad); };
+    const msg = (t, bad) => {
+      const m = $('.vs-msg'); m.textContent = t; m.classList.toggle('bad', !!bad);
+      const ld = $('.vs-load'); if (ld.hidden) return;
+      const pm = /(\d+)%/.exec(t); $('.vs-lt').textContent = t.replace(/…?\s*\d+%$/, '').replace(/…$/, '');
+      $('.vs-pct').textContent = pm ? pm[1] + '%' : ''; $('.vs-pbar i').style.width = (pm ? pm[1] : 2) + '%';
+    };
+    const busy = on => { $('.vs-load').hidden = !on; const g = $('.vs-go'); if (on) { g.dataset.t = g.textContent; g.innerHTML = '<i class="vs-spin sm"></i> Gerando…'; } else if (g.dataset.t) g.textContent = g.dataset.t; };
     const font = getComputedStyle(document.body).fontFamily || 'system-ui, sans-serif';
 
     // Pontos e camera
@@ -279,12 +285,13 @@
     }
 
     $('.vs-go').onclick = async () => {
-      const go = $('.vs-go'); go.disabled = true; $('.vs-video').hidden = true; cv.hidden = false;
+      const go = $('.vs-go'); go.disabled = true; $('.vs-video').hidden = true; cv.hidden = false; busy(true); msg('Preparando o mapa 3D…');
       const old = box.querySelector('.vs-share'); if (old) old.remove();
       try {
         if (!map) await build();
         if (stop) return;
         const blob = await record();
+        busy(false);
         if (!blob || stop) { go.disabled = false; return; }
         if (url) URL.revokeObjectURL(url);
         url = URL.createObjectURL(blob);
@@ -297,8 +304,8 @@
         acts.innerHTML = `${canShare ? '<button type="button" class="btn vs-sh">Compartilhar</button>' : ''}<a class="btn ghost" download="${file.name}" href="${url}">Baixar</a>`;
         $('.vs-actions').appendChild(acts);
         const sh = acts.querySelector('.vs-sh'); if (sh) sh.onclick = () => navigator.share({ files: [file], title: d.meta.title }).catch(() => {});
-        go.textContent = 'Gerar de novo'; go.classList.add('ghost');
-      } catch (e) { msg(e.message || 'Não consegui gerar o vídeo.', true); }
+        go.textContent = 'Gerar de novo'; go.dataset.t = ''; go.classList.add('ghost');
+      } catch (e) { busy(false); msg(e.message || 'Não consegui gerar o vídeo.', true); }
       go.disabled = false;
     };
     return { close };

@@ -228,7 +228,7 @@
       title = selected === today ? 'Início' : selected === addDays(today, 1) ? 'Amanhã' : selected === addDays(today, -1) ? 'Ontem' : WDL[d.getDay()];
       const day = dayAt(selected);
       sub = `${WDL[d.getDay()]}, ${d.getDate()} de ${MON[d.getMonth()]}${day && day.week ? ` · semana ${day.week} de ${plan.weeks.length}` : day && day.recovery ? ` · recuperação, dia ${day.recovery} de 7` : ''}`;
-    } else if (view === 'plano' && plan) sub = `${plan.weeks.length} semanas · prova em ${ddmm(raceISO())}`;
+    } else if (view === 'plano' && plan) sub = `Para ${planRaceLabel()} em ${ddmm(raceISO())} · ${plan.weeks.length} semanas`;
     else if (view === 'progresso' && plan) { const n = Math.max(0, Math.ceil((new Date(raceISO() + 'T05:30:00-03:00') - Date.now()) / 864e5)); sub = n ? `${n} dias para a prova` : 'Dia de prova'; }
     else if (view === 'provas') { const n = allRaces().filter(r => r.date >= today).length; sub = n ? `${n} prova${n > 1 ? 's' : ''} pela frente` : 'Seu calendário de provas'; }
     else if (view === 'ajustes') sub = strava.connected ? 'Strava conectado' : 'Strava, plano e preferências';
@@ -591,7 +591,7 @@
     $('stravaConnect').hidden = strava.connected;
     $('stravaSync').hidden = !strava.connected;
     $('stravaOut').hidden = !strava.connected;
-    $('planInfo').textContent = plan ? `${plan.title} · ${plan.weeks.length} semanas · prova em ${ddmm(raceISO())}.` : 'Nenhum plano ainda. Gere um novo, importe um arquivo .md ou use o plano de exemplo.';
+    $('planInfo').textContent = plan ? `${plan.title} · ${plan.weeks.length} semanas · para ${planRaceLabel()} em ${ddmm(raceISO())}.` : 'Nenhum plano ainda. Gere um novo, importe um arquivo .md ou use o plano de exemplo.';
     $('planChip').textContent = plan ? planSource : 'sem plano';
     $('genBox').hidden = !genOpen;
     $('genToggle').setAttribute('aria-expanded', String(genOpen));
@@ -1481,6 +1481,13 @@
     if (plan && plan.race && extra.hidePlanRace !== plan.race && !list.some(r => r.date === plan.race)) list.push({ id: 'plan', name: 'Prova do plano atual', date: plan.race, dist: distKm(), goal: A.fmtTime(goalSec()), status: 'inscrito', plan: true });
     list.forEach(r => { if (plan && r.date === plan.race) r.plan = true; });
     return list.sort((a, b) => a.date.localeCompare(b.date));
+  }
+  // Nome da prova à qual o plano atual leva (há casos com várias provas cadastradas).
+  function planRaceLabel() {
+    const r = (extra.races || []).find(x => x.date === raceISO() && x.name);
+    if (r) return r.name;
+    const next = allRaces().find(x => x.date >= today);
+    return next && next.date === raceISO() ? 'a próxima prova' : `a prova de ${kmTxt(distKm())}`;
   }
   function raceResultAt(date) {
     const st = done[date]; const a = st && st.analysis;

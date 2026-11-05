@@ -176,7 +176,16 @@
     return res;
   }
 
-  const api = { analyze, sameRoute, timeAt, rolling, speeds, fmtPace, kmTxt, meters };
+  // Distância (m) percorrida depois de "sec" segundos de corrida.
+  function distAt(s, sec) {
+    const t = s.t[0] + sec; if (t <= s.t[0]) return s.d[0]; if (t >= s.t[s.n - 1]) return s.d[s.n - 1];
+    let lo = 0, hi = s.n - 1;
+    while (hi - lo > 1) { const m = (lo + hi) >> 1; if (s.t[m] < t) lo = m; else hi = m; }
+    const f = s.t[hi] > s.t[lo] ? (t - s.t[lo]) / (s.t[hi] - s.t[lo]) : 0;
+    return s.d[lo] + f * (s.d[hi] - s.d[lo]);
+  }
+
+  const api = { analyze, sameRoute, timeAt, distAt, ghost, rolling, speeds, fmtPace, kmTxt, meters };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.RouteInsights = api;
 })(typeof window !== 'undefined' ? window : globalThis);

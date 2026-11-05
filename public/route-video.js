@@ -87,8 +87,8 @@
       const kms = withKm ? (d.kmMoments || []).filter(m => m.i > 2 && m.i <= n - 1) : [];
       moms = base.concat(kms).sort((a, b) => a.i - b.i || (a.km ? 1 : 0) - (b.km ? 1 : 0));
       holdsAt = moms.map(m => d.dist[m.i]);
-      // cada parada dura o tempo de ler o cartão (~60 ms por letra), entre 1,7 s e 7 s
-      holdT = moms.map(m => Math.max(T_HOLD, Math.min(7000, 900 + 60 * (String(m.t).length + String(m.d).length))));
+      // cada parada dura o tempo de ler o cartão (~60 ms por letra), entre 1,7 s e 9 s
+      holdT = moms.map(m => Math.max(T_HOLD, Math.min(9000, 900 + 60 * (String(m.t).length + String(m.d).length))));
       holdOff = [0]; holdT.forEach(x => holdOff.push(holdOff[holdOff.length - 1] + x));
       runEnd = T_INTRO + T_RUN + holdOff[moms.length]; summary = d.summary || ''; END = runEnd + T_OUTRO + (summary ? Math.min(9000, 60 * summary.length) : 0);
     }

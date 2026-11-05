@@ -23,7 +23,7 @@
 <div class="app" id="app">
   <header class="topbar">
     <div class="tb-row">
-      <div class="tb-title"><h1 id="pageTitle">Hoje</h1><small id="pageSub"></small></div>
+      <div class="tb-title"><h1 id="pageTitle">Início</h1><small id="pageSub"></small></div>
       <div class="tb-actions">
         <button class="pill-btn" id="goToday" type="button" hidden>Hoje</button>
         <button class="round sync" id="syncBtn" type="button" aria-label="Sincronizar com o Strava"><svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.5-4.6L4 8M4 4v4h4M4 13a8 8 0 0 0 14.5 4.6L20 16M20 20v-4h-4"/></svg><i class="sdot" id="syncDot"></i></button>
@@ -50,10 +50,6 @@
         <p class="small muted">Só quer ver como funciona? <button class="linkbtn" type="button" data-example>Abrir o plano de exemplo</button></p>
       </div>
       <div class="stack" data-needs-plan id="todayStack">
-        <div class="card adjust" id="adjust" hidden></div>
-        <div class="card workout" id="workout"></div>
-        <div class="card analysis" id="analysis" hidden></div>
-        <div class="card" id="nextCard" hidden></div>
         <a class="card summary" id="summaryCard" href="#progresso" aria-label="Ver progresso">
           <div class="sm">
             <div class="smh"><span class="lbl">Ciclo até a prova</span><b id="sDays">–</b></div>
@@ -71,6 +67,10 @@
           </div>
           <span class="more" aria-hidden="true">›</span>
         </a>
+        <div class="card adjust" id="adjust" hidden></div>
+        <div class="card workout" id="workout"></div>
+        <div class="card analysis" id="analysis" hidden></div>
+        <div class="card" id="nextCard" hidden></div>
         <div class="card" id="weekSumHome" hidden></div>
         <div class="card" id="dietCard" hidden></div>
       </div>
@@ -80,6 +80,7 @@
     <section data-view="plano" class="view" hidden>
       <div class="card" data-no-plan hidden><h3>Sem plano ainda</h3><p class="muted">Gere ou importe um plano para começar.</p><div class="row-actions"><a class="btn" href="#ajustes" data-open-gen>Gerar meu plano</a><button class="btn ghost" type="button" data-example>Usar plano de exemplo</button></div></div>
       <div class="stack" data-needs-plan>
+        <div class="card" id="prePlan" hidden></div>
         <div class="pills" id="weekPills" role="tablist" aria-label="Semanas"></div>
         <div class="card" id="weekNote"></div>
         <div class="card list" id="weekDays"></div>
@@ -254,7 +255,7 @@
   </main>
 
   <nav class="tabbar" aria-label="Navegação">
-    <a href="#hoje" data-tab="hoje"><span class="ti"><svg viewBox="0 0 24 24"><path d="M4 11l8-7 8 7v9a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z"/></svg></span><span>Hoje</span></a>
+    <a href="#hoje" data-tab="hoje"><span class="ti"><svg viewBox="0 0 24 24"><path d="M4 11l8-7 8 7v9a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z"/></svg></span><span>Início</span></a>
     <a href="#plano" data-tab="plano"><span class="ti"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg></span><span>Plano</span></a>
     <a href="#progresso" data-tab="progresso"><span class="ti"><svg viewBox="0 0 24 24"><path d="M4 19h16M6 15l4-4 3 3 5-6"/></svg></span><span>Progresso</span></a>
     <a href="#provas" data-tab="provas"><span class="ti"><svg viewBox="0 0 24 24"><path d="M6 21V4M6 4h11l-2 4 2 4H6"/></svg></span><span>Provas</span></a>

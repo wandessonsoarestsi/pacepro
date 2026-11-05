@@ -157,14 +157,14 @@
   }
 
   /* ---------- Topo e navegação ---------- */
-  const VIEW_TITLE = { hoje: 'Hoje', plano: 'Plano', progresso: 'Progresso', provas: 'Provas', ajustes: 'Ajustes' };
+  const VIEW_TITLE = { hoje: 'Início', plano: 'Plano', progresso: 'Progresso', provas: 'Provas', ajustes: 'Ajustes' };
   let view = 'hoje';
   const mondayOf = s => addDays(s, -((D(s).getDay() + 6) % 7));
   function renderHeader() {
     const d = D(selected);
     let title = VIEW_TITLE[view], sub = '';
     if (view === 'hoje' && plan) {
-      title = selected === today ? 'Hoje' : selected === addDays(today, 1) ? 'Amanhã' : selected === addDays(today, -1) ? 'Ontem' : WDL[d.getDay()];
+      title = selected === today ? 'Início' : selected === addDays(today, 1) ? 'Amanhã' : selected === addDays(today, -1) ? 'Ontem' : WDL[d.getDay()];
       const day = dayAt(selected);
       sub = `${WDL[d.getDay()]}, ${d.getDate()} de ${MON[d.getMonth()]}${day && day.week ? ` · semana ${day.week} de ${plan.weeks.length}` : day && day.recovery ? ` · recuperação, dia ${day.recovery} de 7` : ''}`;
     } else if (view === 'plano' && plan) sub = `${plan.weeks.length} semanas · prova em ${ddmm(raceISO())}`;
@@ -293,13 +293,11 @@
   function renderWorkout() {
     const day = dayAt(selected);
     const el = $('workout');
+    el.hidden = false;
     if (!day && selected < firstDay()) {
-      const n = Math.round((D(firstDay()) - D(selected)) / 864e5);
-      el.innerHTML = `<div class="wk-top"><div><span class="eyebrow">Antes do plano</span><h3>O plano começa ${n === 1 ? 'amanhã' : `em ${n} dias`}</h3></div></div>` +
-        `<div class="blocks"><div class="blk rest"><span class="k">Até lá</span><p class="note">Primeiro treino: ${WDL[D(firstDay()).getDay()].toLowerCase()}, ${ddmm(firstDay())}. Até lá, caminhadas ou trotes leves de 20 a 30 minutos, se estiver se sentindo bem.</p></div></div>` +
-        `<button class="btn wide" id="goStart" type="button">Ver o primeiro treino</button>`;
+      // Antes do início do plano: o aviso fica na aba Plano e o Início mostra só o painel.
+      el.hidden = true; el.innerHTML = '';
       $('analysis').hidden = true;
-      $('goStart').onclick = () => { selected = firstDay(); renderAll(); };
       return;
     }
     if (!day && selected > raceISO()) { el.innerHTML = `<div class="wk-top"><div><span class="eyebrow">Plano concluído</span><h3>Ciclo encerrado</h3></div></div><p class="muted">A semana de recuperação acabou. Defina o próximo objetivo logo abaixo e o app monta um plano novo.</p>`; $('analysis').hidden = true; return; }
@@ -440,7 +438,18 @@
     mobility: '<svg viewBox="0 0 24 24"><circle cx="12" cy="4.5" r="1.8"/><path d="M4 9h16M12 9v5l-4 6M12 14l4 6"/></svg>',
     cross: '<svg viewBox="0 0 24 24"><path d="M12 3l2.5 5.5L20 9.5l-4 4 1 5.5-5-2.8L7 19l1-5.5-4-4 5.5-1z"/></svg>'
   };
+  function renderPrePlan() {
+    const box = $('prePlan');
+    if (!plan || today >= firstDay()) { box.hidden = true; return; }
+    const n = Math.round((D(firstDay()) - D(today)) / 864e5);
+    box.hidden = false;
+    box.innerHTML = `<div class="wk-top"><div><span class="eyebrow">Antes do plano</span><h3>O plano começa ${n === 1 ? 'amanhã' : `em ${n} dias`}</h3></div></div>` +
+      `<div class="blocks"><div class="blk rest"><span class="k">Até lá</span><p class="note">Primeiro treino: ${WDL[D(firstDay()).getDay()].toLowerCase()}, ${ddmm(firstDay())}. Até lá, caminhadas ou trotes leves de 20 a 30 minutos, se estiver se sentindo bem.</p></div></div>` +
+      `<button class="btn wide" id="goStart" type="button">Ver o primeiro treino</button>`;
+    $('goStart').onclick = () => { selected = firstDay(); location.hash = 'hoje'; renderAll(); window.scrollTo(0, 0); };
+  }
   function renderPlan() {
+    renderPrePlan();
     const d = dayOf(selected), cur = dayOf(today);
     if (planWeek == null) planWeek = d ? d.week : plan.weeks[0].n;
     const counted = x => isRunType(x.type);

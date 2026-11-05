@@ -149,19 +149,56 @@
   }
 
   /* ---------- Topo e navegação ---------- */
-  function renderTop() {
+  const VIEW_TITLE = { hoje: 'Hoje', plano: 'Plano', progresso: 'Progresso', ajustes: 'Ajustes' };
+  let view = 'hoje';
+  const mondayOf = s => addDays(s, -((D(s).getDay() + 6) % 7));
+  function renderHeader() {
     const d = D(selected);
-    $('dayTitle').textContent = selected === today ? 'HOJE' : selected === addDays(today, 1) ? 'AMANHÃ' : selected === addDays(today, -1) ? 'ONTEM' : WDL[d.getDay()].toUpperCase();
-    $('daySub').textContent = `${WDL[d.getDay()]}, ${d.getDate()} de ${MON[d.getMonth()]}`;
-    $('prevDay').disabled = selected <= minDay();
-    $('nextDay').disabled = selected >= lastDay();
+    let title = VIEW_TITLE[view], sub = '';
+    if (view === 'hoje' && plan) {
+      title = selected === today ? 'Hoje' : selected === addDays(today, 1) ? 'Amanhã' : selected === addDays(today, -1) ? 'Ontem' : WDL[d.getDay()];
+      const day = dayOf(selected);
+      sub = `${WDL[d.getDay()]}, ${d.getDate()} de ${MON[d.getMonth()]}${day ? ` · semana ${day.week} de ${plan.weeks.length}` : ''}`;
+    } else if (view === 'plano' && plan) sub = `${plan.weeks.length} semanas · prova em ${ddmm(raceISO())}`;
+    else if (view === 'progresso' && plan) { const n = Math.max(0, Math.ceil((new Date(raceISO() + 'T05:30:00-03:00') - Date.now()) / 864e5)); sub = n ? `${n} dias para a prova` : 'Dia de prova'; }
+    else if (view === 'ajustes') sub = strava.connected ? 'Strava conectado' : 'Strava, plano e preferências';
+    $('pageTitle').textContent = title;
+    $('pageSub').textContent = sub;
+    const inRange = today >= minDay() && today <= lastDay();
+    $('goToday').hidden = !(view === 'hoje' && plan && selected !== today && inRange);
+    $('syncDot').className = 'sdot' + (strava.connected ? ' on' : '');
+    $('syncBtn').setAttribute('aria-label', strava.connected ? 'Sincronizar com o Strava' : 'Conectar o Strava');
+    renderWeekStrip();
+  }
+  function renderWeekStrip() {
+    const strip = $('weekStrip');
+    strip.hidden = !(view === 'hoje' && plan);
+    if (strip.hidden) return;
+    const mon = mondayOf(selected);
+    const LET = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
+    let html = '';
+    for (let i = 0; i < 7; i++) {
+      const dt = addDays(mon, i), x = dayOf(dt), off = dt < minDay() || dt > lastDay();
+      const kind = !x ? 'none' : x.type === 'swim' ? 'swim' : x.type === 'rest' ? (x.gym ? 'gym' : 'rest') : x.type === 'race' ? 'race' : 'run';
+      const mark = done[dt] ? '<i class="mk done"></i>' : `<i class="mk ${kind}${x && x.key && kind === 'run' ? ' key' : ''}"></i>`;
+      html += `<button type="button" role="tab" class="wd${dt === today ? ' today' : ''}" data-d="${dt}" aria-selected="${dt === selected}"${off ? ' disabled' : ''} aria-label="${WDL[D(dt).getDay()]} ${ddmm(dt)}${x ? ', ' + esc(x.title) : ''}${done[dt] ? ', feito' : ''}"><span class="wl">${LET[D(dt).getDay()]}</span><span class="wn">${D(dt).getDate()}</span>${mark}</button>`;
+    }
+    $('weekDaysStrip').innerHTML = html;
+    $('weekDaysStrip').querySelectorAll('.wd').forEach(b => b.onclick = () => { selected = b.dataset.d; renderAll(); });
+    $('prevWeek').disabled = mon <= minDay();
+    $('nextWeek').disabled = addDays(mon, 6) >= lastDay();
+  }
+  function goDay(n) {
+    const t = addDays(selected, n);
+    selected = t < minDay() ? minDay() : t > lastDay() ? lastDay() : t;
+    renderAll();
   }
 
   function renderSummary() {
     const race = new Date(raceISO() + 'T05:30:00-03:00');
     const ms = race - Date.now();
     const days = Math.max(0, Math.ceil(ms / 864e5));
-    $('sDays').textContent = ms > 0 ? `${days} dias` : 'Prova!';
+    $('sDays').textContent = ms <= 0 || raceISO() === today ? 'É hoje!' : days === 1 ? '1 dia' : `${days} dias`;
     const day = dayOf(selected);
     const wk = day ? plan.weeks.find(w => w.n === day.week) : null;
     const keyDays = wk ? wk.days.filter(x => x.type !== 'rest' && x.type !== 'swim') : [];
@@ -184,7 +221,9 @@
     };
     $('rings').innerHTML = ring(52, p1, '--c1') + ring(38, p2, '--c2') + ring(24, p3, '--c3');
 
-    // tiles
+    renderStats(est, proj);
+  }
+  function renderStats(est, proj) {
     $('tEst').textContent = est ? A.fmtTime(est.sec) : '–';
     $('tEstSub').textContent = est ? `${A.fmtPace(est.sec / distKm())}/km${est.gapDays > 10 ? ' · com pausa' : ''}` : 'sem corridas';
     $('tGoal').textContent = A.fmtTime(goalSec());
@@ -192,25 +231,34 @@
     const lastDone = Object.entries(done).filter(([, v]) => v.analysis).sort((a, b) => b[0].localeCompare(a[0]))[0];
     if (lastDone) { $('tLast').textContent = A.fmtPace(lastDone[1].analysis.metrics.pace) ; $('tLastSub').textContent = `${ddmm(lastDone[0])} · ${lastDone[1].analysis.metrics.distKm.toFixed(1).replace('.', ',')} km`; }
     else { const r = allRuns().slice(-1)[0]; $('tLast').textContent = r ? A.fmtPace(r.sec / r.km) : '–'; $('tLastSub').textContent = r ? `${ddmm(r.date)} · ${r.km.toFixed(1).replace('.', ',')} km` : '–'; }
-    const h = Math.max(0, Math.floor(ms / 36e5) % 24), m = Math.max(0, Math.floor(ms / 6e4) % 60);
-    $('tClock').textContent = ms > 0 ? `${days}d ${h}h` : '0d';
-    $('tClockSub').textContent = ms > 0 ? `${m} min · ${ddmm(raceISO())}` : 'Boa prova!';
+    $('tProj').textContent = proj ? A.fmtTime(proj) : '–';
+    $('tProjSub').textContent = proj ? (proj <= goalSec() ? 'dentro da meta' : `${A.fmtTime(proj - goalSec())} acima da meta`) : 'sem corridas';
   }
 
   /* ---------- Treino do dia ---------- */
-  function gymBlock(key, day) {
+  let gymOpen = false;
+  function gymBlock(key, day, alone) {
     const g = plan.gym[key];
     if (!g) return `<div class="blk gym"><span class="k">Musculação</span><b>Sessão ${esc(key)}</b><p class="note">${esc(day.gymText)}</p></div>`;
     const head = g.head || ['Exercício', 'Volume'];
     const wk = plan.weeks.find(w => w.n === day.week);
-    const extra = day.gymText.replace(/^[A-E]\b\s*/, '').replace(/^leve:?\s*/i, m => m);
-    return `<div class="blk gym"><span class="k">Musculação</span><b>${esc(key)} · ${esc(g.name.replace(/\s*\(.*\)$/, ''))}</b>` +
+    const extra = day.gymText.replace(/^[A-E]\b\s*/, '');
+    const open = alone || gymOpen;
+    return `<details class="blk gym" id="gymBox"${open ? ' open' : ''}><summary><span class="k">Musculação</span><span class="gsum"><b>${esc(key)} · ${esc(g.name.replace(/\s*\(.*\)$/, ''))}</b><small>${g.rows.length} exercícios</small></span></summary>` +
       (extra && extra !== key ? `<p class="note">${esc(extra)}</p>` : '') +
       (wk && wk.note ? `<p class="note">${esc(wk.note)}</p>` : '') +
-      `<div class="tbl"><table><thead><tr>${head.map(h => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${g.rows.map(r => `<tr>${r.map(c => `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div></div>`;
+      `<div class="tbl"><table><thead><tr>${head.map(h => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${g.rows.map(r => `<tr>${r.map(c => `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div></details>`;
   }
 
   const TYPE_LABEL = { easy: 'Leve', threshold: 'Limiar', interval: 'Intervalado', test: 'Teste', race: 'Prova', swim: 'Natação', rest: 'Descanso' };
+  const TIP = {
+    easy: 'FC até ~145. Passou disso, caminhe até baixar e volte a trotar.',
+    threshold: 'FC entre 150 e 165, ritmo constante. Se for quebrar, reduza 10–15 s/km em vez de parar.',
+    interval: 'Marque uma volta no relógio a cada tiro. Todos os tiros no mesmo ritmo.',
+    test: 'Km 1 levemente mais lento, km 2–4 no alvo, km 5 com tudo.',
+    race: 'Km 1 levemente mais lento, depois o ritmo do plano de prova.'
+  };
+  const CHECK = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
 
   function renderWorkout() {
     const day = dayOf(selected);
@@ -219,7 +267,7 @@
       const n = Math.round((D(firstDay()) - D(selected)) / 864e5);
       el.innerHTML = `<div class="wk-top"><div><span class="eyebrow">Antes do plano</span><h3>O plano começa ${n === 1 ? 'amanhã' : `em ${n} dias`}</h3></div></div>` +
         `<div class="blocks"><div class="blk rest"><span class="k">Até lá</span><p class="note">Primeiro treino: ${WDL[D(firstDay()).getDay()].toLowerCase()}, ${ddmm(firstDay())}. Até lá, caminhadas ou trotes leves de 20 a 30 minutos, se estiver se sentindo bem.</p></div></div>` +
-        `<div class="row-actions"><button class="btn ghost" id="goStart" type="button">Ver o primeiro treino</button></div>`;
+        `<button class="btn wide" id="goStart" type="button">Ver o primeiro treino</button>`;
       $('analysis').hidden = true;
       $('goStart').onclick = () => { selected = firstDay(); renderAll(); };
       return;
@@ -227,29 +275,36 @@
     if (!day) { el.innerHTML = `<p class="muted">Sem treino planejado para este dia.</p>`; $('analysis').hidden = true; return; }
     const st = done[day.date];
     const isRun = !['swim', 'rest'].includes(day.type);
-    let html = `<div class="wk-top"><div><span class="eyebrow">Semana ${day.week} · ${esc(TYPE_LABEL[day.type])}</span><h3>${esc(day.title)}</h3></div><div class="badges">` +
-      (day.key && isRun ? '<span class="chip key">Treino-chave</span>' : '') + (st ? '<span class="chip good">Feito</span>' : '') + `</div></div><div class="blocks">`;
+    let html = `<div class="wk-top"><div><span class="eyebrow">${esc(TYPE_LABEL[day.type])}${day.key && isRun ? ' · treino-chave' : ''}</span><h3>${esc(day.title)}</h3></div>` +
+      (st ? `<span class="chip good">${CHECK}Feito</span>` : '') + `</div>`;
     if (isRun) {
-      html += `<div class="blk run"><span class="k">Corrida</span><dl class="kv"><dt>Rua</dt><dd>${esc(day.rua)}</dd>${day.esteira ? `<dt>Esteira</dt><dd>${esc(day.esteira)}${/\d$/.test(day.esteira) ? ' km/h' : ''}${/\d/.test(day.esteira) ? ' · inclinação 1%' : ''}</dd>` : ''}${day.targetPace ? `<dt>Ritmo-alvo</dt><dd>${A.fmtPace(day.targetPace)}/km (${(3600 / day.targetPace).toFixed(1).replace('.', ',')} km/h)</dd>` : ''}</dl>` +
-        `<p class="note">${day.type === 'easy' ? 'FC até ~145. Passou disso, caminhe até baixar e volte a trotar.' : day.type === 'threshold' ? 'FC entre 150 e 165, ritmo constante. Se for quebrar, reduza 10–15 s/km em vez de parar.' : day.type === 'interval' ? 'Marque uma volta no relógio a cada tiro. Todos os tiros no mesmo ritmo.' : 'Km 1 levemente mais lento, km 2–4 no alvo, km 5 com tudo.'}</p>` +
-        `<p class="note">Aquecimento 10' leve e desaquecimento 5–10'. Treinos fortes cedo ou na esteira.</p></div>`;
+      const hero = [];
+      if (day.targetPace) hero.push(['Ritmo-alvo', A.fmtPace(day.targetPace), '/km'], ['Na esteira', (3600 / day.targetPace).toFixed(1).replace('.', ','), 'km/h']);
+      if (day.type === 'easy' || day.type === 'threshold') hero.push(['FC', day.type === 'easy' ? '≤145' : '150–165', 'bpm']);
+      if (hero.length) html += `<div class="hero">${hero.map(([l, v, u]) => `<div><span>${l}</span><b${v.length > 5 && hero.length > 2 ? ' class="sm"' : ''}>${v}</b><small>${u}</small></div>`).join('')}</div>`;
+    }
+    html += `<div class="blocks">`;
+    if (isRun) {
+      html += `<div class="blk run"><span class="k">Corrida</span><dl class="kv"><dt>Rua</dt><dd>${esc(day.rua)}</dd>${day.esteira ? `<dt>Esteira</dt><dd>${esc(day.esteira)}${/\d$/.test(day.esteira) ? ' km/h' : ''}${/\d/.test(day.esteira) ? ' · incl. 1%' : ''}</dd>` : ''}</dl>` +
+        `<p class="note">${TIP[day.type] || ''} Aquecimento 10' leve e desaquecimento 5–10'.</p></div>`;
     }
     if (day.type === 'swim') html += `<div class="blk swim"><span class="k">Natação</span><b>${esc(day.title)}</b><p class="note">Técnica e respiração, sem séries fortes.</p></div>`;
-    if (day.gym) html += gymBlock(day.gym, day);
-    if (day.type === 'rest' && !day.gym) html += `<div class="blk rest"><span class="k">Descanso</span><p class="note">${esc(day.rua && !/^descanso$/i.test(day.rua) ? day.rua : 'Descanso total. Sono, água e boa comida.')}</p></div>`;
+    if (day.gym) html += gymBlock(day.gym, day, !isRun && day.type !== 'swim');
+    if (day.type === 'rest' && !day.gym) html += `<p class="muted">${esc(day.rua && !/^descanso$/i.test(day.rua) ? day.rua : 'Descanso total. Sono, água e boa comida.')}</p>`;
     const adj = day.movedFrom ? `Treino de ${WD[D(day.movedFrom).getDay()]} ${ddmm(day.movedFrom)} remarcado para hoje.` : day.movedTo ? '' : day.skipped ? '' : day.softened ? `Era "${day.softened}". Trocado por leve para recuperar.` : '';
     if (day.movedFrom || day.movedTo || day.skipped || day.softened) html += `<div class="blk adj"><span class="k">Plano ajustado</span>${adj ? `<p class="note">${esc(adj)}</p>` : ''}<button class="linkbtn" id="undoAdj" type="button">Desfazer ajuste</button></div>`;
-    if (day.type === 'race') html += `<div class="blk run"><span class="k">Plano de prova</span><p class="note">Ritmo por km, aquecimento e checklist do dia.</p><a class="linkbtn" href="#progresso" data-goto="raceCard">Ver o plano de prova</a></div>`;
+    if (day.type === 'race') html += `<a class="blk run golink" href="#plano" data-goto="raceCard"><span class="k">Plano de prova</span><span>Ritmo por km, aquecimento e checklist do dia <b>›</b></span></a>`;
     html += `</div>`;
 
     if (day.type !== 'rest' || day.gym) {
-      if (st) html += `<div class="row-actions"><button class="btn ghost" id="undo" type="button">Desmarcar</button>${isRun && st.analysis ? `<button class="btn ghost" id="redo" type="button">Analisar de novo</button>` : ''}</div>`;
-      else html += `<div class="row-actions"><button class="btn" id="finish" type="button">Marcar como finalizado</button></div>`;
+      if (!st) html += `<button class="btn wide big" id="finish" type="button">${CHECK}${isRun && strava.connected ? 'Concluir e analisar' : 'Concluir treino'}</button>`;
     }
     html += `<div id="finishArea"></div>`;
     if (st && day.type !== 'rest') html += feelHtml(day.date);
+    if (st && (day.type !== 'rest' || day.gym)) html += `<div class="row-actions"><button class="btn ghost sm" id="undo" type="button">Desmarcar</button>${isRun && st.analysis ? `<button class="btn ghost sm" id="redo" type="button">Analisar de novo</button>` : ''}</div>`;
     el.innerHTML = html;
     bindFeel(day.date);
+    const gb = $('gymBox'); if (gb && isRun) gb.ontoggle = () => { gymOpen = gb.open; };
     const ua = $('undoAdj'); if (ua) ua.onclick = () => {
       if (day.movedFrom) delete extra.moves[day.date];
       if (day.movedTo) delete extra.moves[day.movedTo];
@@ -257,12 +312,19 @@
       if (day.softened) delete extra.soft[day.date];
       refreshAdjust();
     };
-    el.querySelectorAll('[data-goto]').forEach(a => a.onclick = () => setTimeout(() => { const t = $(a.dataset.goto); if (t) t.scrollIntoView({ block: 'start' }); }, 50));
+    bindGoto(el);
 
     const f = $('finish'); if (f) f.onclick = () => finish(day);
     const u = $('undo'); if (u) u.onclick = () => { if (st && st.auto) extra.dismiss['a' + day.date] = true; delete done[day.date]; persist(); renderAll(); };
     const r = $('redo'); if (r) r.onclick = () => finish(day, true);
     renderAnalysis(day);
+    // Treino feito com análise: o resultado vem primeiro.
+    const an = $('analysis');
+    if (!an.hidden) el.before(an); else el.after(an);
+  }
+  // Links que levam a um cartão em outra aba: troca a aba e rola até ele.
+  function bindGoto(root) {
+    root.querySelectorAll('[data-goto]').forEach(a => a.onclick = () => setTimeout(() => { const t = $(a.dataset.goto); if (t) t.scrollIntoView({ block: 'start', behavior: 'smooth' }); }, 60));
   }
 
   function say(html, tone) { const a = $('finishArea'); if (a) a.innerHTML = `<p class="msg ${tone || ''}">${html}</p>`; }
@@ -339,16 +401,24 @@
     rest: '<svg viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>'
   };
   function renderPlan() {
-    const d = dayOf(selected);
+    const d = dayOf(selected), cur = dayOf(today);
     if (planWeek == null) planWeek = d ? d.week : plan.weeks[0].n;
-    $('weekPills').innerHTML = plan.weeks.map(w => `<button type="button" role="tab" data-w="${w.n}" aria-selected="${w.n === planWeek}">SEM ${w.n}</button>`).join('');
+    const counted = x => x.type !== 'rest' && x.type !== 'swim';
+    $('weekPills').innerHTML = plan.weeks.map(w => {
+      const k = w.days.filter(counted), all = k.length && k.every(x => done[x.date]);
+      return `<button type="button" role="tab" data-w="${w.n}" aria-selected="${w.n === planWeek}" class="${cur && cur.week === w.n ? 'now' : ''}">SEM ${w.n}${all ? ' ✓' : ''}</button>`;
+    }).join('');
     document.querySelectorAll('#weekPills button').forEach(b => b.onclick = () => { planWeek = +b.dataset.w; renderPlan(); });
+    const sel = document.querySelector('#weekPills [aria-selected="true"]'); if (sel && sel.scrollIntoView) sel.scrollIntoView({ block: 'nearest', inline: 'center' });
     const w = plan.weeks.find(x => x.n === planWeek);
-    $('weekNote').innerHTML = `<span class="eyebrow">${esc(w.range)}</span><h3>${esc(w.title)}</h3>${w.note ? `<p class="muted">${esc(w.note)}</p>` : ''}`;
+    const k = w.days.filter(counted), nDone = k.filter(x => done[x.date]).length;
+    $('weekNote').innerHTML = `<div class="card-head"><div><span class="eyebrow">Semana ${w.n} · ${esc(w.range)}</span><h3>${esc(w.title)}</h3></div>${k.length ? `<span class="chip ${nDone === k.length ? 'good' : ''}">${nDone}/${k.length}</span>` : ''}</div>` +
+      (k.length ? `<div class="pbar"><i style="width:${Math.round(100 * nDone / k.length)}%"></i></div>` : '') +
+      (w.note ? `<p class="muted small">${esc(w.note)}</p>` : '');
     $('weekDays').innerHTML = w.days.map(x => {
       const dt = D(x.date); const kind = x.type === 'swim' ? 'swim' : x.type === 'rest' ? 'rest' : 'run';
-      const right = done[x.date] ? '<span class="done">✓ feito</span>' : x.gym ? `<span class="chip">${esc(x.gym)}</span>` : '';
-      return `<button type="button" class="lrow ${x.date === today ? 'today' : ''}" data-d="${x.date}"><span class="ico ${x.key && kind === 'run' ? 'key' : kind}">${ICON[kind]}</span><span style="min-width:0"><span class="t">${esc(x.title)}</span><span class="s">${WD[dt.getDay()]} ${ddmm(x.date)} · ${esc(TYPE_LABEL[x.type])}</span></span>${right}</button>`;
+      const right = done[x.date] ? `<span class="done">${CHECK}</span>` : x.gym ? `<span class="chip">${esc(x.gym)}</span>` : '';
+      return `<button type="button" class="lrow ${x.date === today ? 'today' : ''}" data-d="${x.date}"><span class="ico ${x.key && kind === 'run' ? 'key' : kind}">${ICON[kind]}</span><span style="min-width:0"><span class="t">${esc(x.title)}</span><span class="s">${x.date === today ? 'hoje' : WD[dt.getDay()] + ' ' + ddmm(x.date)} · ${esc(TYPE_LABEL[x.type])}${x.key && kind === 'run' ? ' · chave' : ''}</span></span>${right}<span class="chev" aria-hidden="true">›</span></button>`;
     }).join('');
     document.querySelectorAll('#weekDays .lrow').forEach(b => b.onclick = () => { selected = b.dataset.d; location.hash = 'hoje'; renderAll(); window.scrollTo(0, 0); });
   }
@@ -359,10 +429,16 @@
   };
 
   /* ---------- Progresso ---------- */
+  let showAllRuns = false;
+  $('moreRuns').onclick = () => { showAllRuns = !showAllRuns; renderProgress(); };
   function renderProgress() {
     const rs = allRuns();
     $('runsSrc').textContent = strava.connected ? 'do Strava' : 'conecte o Strava para ver todas';
-    $('runs').innerHTML = rs.slice().reverse().map(r => `<div class="lrow" style="cursor:default"><span class="ico run">${ICON.run}</span><span style="min-width:0"><span class="t">${esc(r.name)}</span><span class="s">${ddmm(r.date)} · ${r.km.toFixed(2).replace('.', ',')} km · ${A.fmtTime(r.sec)}${r.hr ? ` · FC ${r.hr}` : ''}</span></span><span class="v">${A.fmtPace(r.sec / r.km)}<small>/km</small></span></div>`).join('') || '<p class="muted">Nenhuma corrida ainda.</p>';
+    const list = rs.slice().reverse(), shown = showAllRuns ? list : list.slice(0, 6);
+    $('moreRuns').hidden = list.length <= 6;
+    $('moreRuns').textContent = showAllRuns ? 'Mostrar menos' : `Ver todas (${list.length})`;
+    $('chartTitle').textContent = `Tempo estimado nos ${String(distKm()).replace('.', ',')} km`;
+    $('runs').innerHTML = shown.map(r => `<div class="lrow" style="cursor:default"><span class="ico run">${ICON.run}</span><span style="min-width:0"><span class="t">${esc(r.name)}</span><span class="s">${ddmm(r.date)} · ${r.km.toFixed(2).replace('.', ',')} km · ${A.fmtTime(r.sec)}${r.hr ? ` · FC ${r.hr}` : ''}</span></span><span class="v">${A.fmtPace(r.sec / r.km)}<small>/km</small></span></div>`).join('') || '<p class="muted">Nenhuma corrida ainda.</p>';
 
     const dates = [...new Set(rs.map(r => r.date).concat(analyses().map(a => a.date)))].sort().filter(x => x <= today);
     const pts = dates.map(d => ({ d, v: (estimateAt(d) || {}).sec })).filter(p => p.v);
@@ -388,7 +464,7 @@
       s += `<circle cx="${X(raceISO())}" cy="${Y(pr)}" r="5.5" fill="var(--c2)"/><text x="${X(raceISO()) - 10}" y="${Y(pr) - 10}" text-anchor="end" font-size="13" font-weight="800" fill="var(--fg)">${A.fmtTime(pr)}</text>`;
     }
     $('chart').innerHTML = s;
-    $('chartHint').textContent = 'Linha azul: tempo estimado nos 5 km a partir das suas corridas e dos treinos analisados. Tracejado laranja: projeção até a prova se o plano for cumprido. Pausas longas aumentam a estimativa.';
+    $('chartHint').textContent = 'A estimativa vem das suas corridas e treinos analisados. A projeção mostra onde você chega se cumprir o plano.';
   }
 
   /* ---------- Ajustes ---------- */
@@ -404,10 +480,20 @@
     $('stravaConnect').hidden = strava.connected;
     $('stravaSync').hidden = !strava.connected;
     $('stravaOut').hidden = !strava.connected;
-    $('planInfo').textContent = plan ? `${plan.title} · ${plan.weeks.length} semanas, ${plan.days.length} dias · prova em ${ddmm(raceISO())}.` : 'Nenhum plano ainda. Gere um acima, importe um arquivo .md ou use o plano de exemplo.';
+    $('planInfo').textContent = plan ? `${plan.title} · ${plan.weeks.length} semanas · prova em ${ddmm(raceISO())}.` : 'Nenhum plano ainda. Gere um novo, importe um arquivo .md ou use o plano de exemplo.';
+    $('planChip').textContent = plan ? planSource : 'sem plano';
+    $('genBox').hidden = !genOpen;
+    $('genToggle').setAttribute('aria-expanded', String(genOpen));
     const t = store.get('sub30.theme', 'system');
     document.querySelectorAll('#themePills button').forEach(b => b.setAttribute('aria-checked', String(b.dataset.t === t)));
   }
+  let genOpen = false;
+  function openGen(open) {
+    genOpen = open; renderSettings();
+    if (open) setTimeout(() => { $('genBox').scrollIntoView({ block: 'start', behavior: 'smooth' }); }, 60);
+  }
+  $('genToggle').onclick = () => openGen(!genOpen);
+  document.querySelectorAll('[data-open-gen]').forEach(a => a.addEventListener('click', () => openGen(true)));
   document.querySelectorAll('#themePills button').forEach(b => b.onclick = () => {
     const t = b.dataset.t; store.set('sub30.theme', t);
     try { localStorage.setItem('sub30.theme', t); } catch (e) {}
@@ -425,6 +511,7 @@
       if (!p.days.length) throw new Error('Não encontrei nenhum dia de treino. Confira se as tabelas têm a coluna Data com "Seg 09/11", "Ter 10/11"...');
       if (!p.race) throw new Error('Não encontrei a data da prova. Inclua uma linha como "Prova: domingo, 13/12/2026".');
       setPlanMd(text, 'importado');
+      genOpen = false; renderSettings();
       msg.className = 'msg good'; msg.textContent = `Plano importado: ${p.weeks.length} semanas, ${p.days.length} dias, prova em ${ddmm(p.race)}.`;
       clampSelected(); renderAll();
     } catch (err) { msg.className = 'msg bad'; msg.textContent = err.message; }
@@ -474,7 +561,7 @@
       if (curTyped) done._base = { date: today, sec: curTyped };
       setPlanMd(generated, 'gerado no app');
       $('genActions').hidden = true;
-      const msg = $('genMsg'); msg.className = 'msg good'; msg.textContent = 'Plano novo em uso. O plano anterior pode ser restaurado em "Voltar ao plano padrão".';
+      genOpen = false; $('genMsg').hidden = true; location.hash = 'hoje'; showToast('Plano novo em uso.');
     };
   })();
 
@@ -668,6 +755,7 @@
     for (let j = i + 1; j < lines.length; j++) { const m = lines[j].match(/^(#+)\s/); if (m && m[1].length <= lvl) break; if (/^---\s*$/.test(lines[j])) break; out.push(lines[j]); }
     return out.join('\n').trim();
   }
+  const raceDays = () => Math.ceil((D(raceISO()) - D(today)) / 864e5);
   function renderRace() {
     const box = $('raceCard'); if (!plan) { box.innerHTML = ''; return; }
     const r = racePlan(), dist = distKm();
@@ -677,12 +765,12 @@
       `<p class="muted small">${esc(r.note)}</p>` +
       `<div class="tbl"><table><thead><tr><th>Km</th><th>Ritmo</th><th>Acumulado</th></tr></thead><tbody>${show.map(x => `<tr><td>${x.len < 1 ? `${x.km - 1 + +x.len.toFixed(1)}`.replace('.', ',') : x.km}</td><td>${A.fmtPace(x.pace)}/km</td><td>${A.fmtTime(Math.round(x.acc))}</td></tr>`).join('')}</tbody></table></div>` +
       `<p class="muted small">O relógio costuma marcar um pouco mais que a distância oficial. Mire 3–5 s/km mais rápido do que a tabela no relógio.</p>` +
-      `<div class="checks2">` +
+      `<details class="race"${raceDays() <= 3 ? ' open' : ''}><summary>Checklist da véspera e do dia</summary><div class="checks2">` +
       `<div><b>Véspera</b><ul><li>Jantar com carboidrato que você já conhece</li><li>Separar roupa, tênis, número e chip</li><li>Dormir cedo, sem treino</li></ul></div>` +
       `<div><b>Manhã da prova</b><ul><li>Café da manhã 2–3 h antes, já testado em treino</li><li>Água aos poucos, sem exagero</li><li>Chegar 45 min antes</li></ul></div>` +
       `<div><b>Largada</b><ul><li>10 min de trote leve + 3 acelerações curtas</li><li>Largar no meio do pelotão, sem ziguezague</li><li>Km 1 levemente mais lento que o alvo</li></ul></div>` +
       `<div><b>Durante</b><ul><li>Olhar o ritmo médio a cada km</li><li>Km 3 é o mais duro de cabeça: só mantenha</li><li>Último km com tudo o que sobrar</li></ul></div>` +
-      `</div>` +
+      `</div></details>` +
       (sec && window.marked ? `<details class="prose"><summary>Estratégia do seu plano</summary>${window.marked.parse(sec)}</details>` : '');
   }
 
@@ -698,14 +786,20 @@
     box.innerHTML = `<div class="card-head"><h2>Alimentação de hoje</h2><span class="chip ${got.length >= 4 ? 'good' : ''}">${got.length}/${DIET.length}</span></div>` +
       `<div class="checklist">${DIET.map((t, i) => `<button type="button" class="ck" data-i="${i}" aria-pressed="${got.includes(i)}"><span class="box"></span>${esc(t)}</button>`).join('')}</div>` +
       `<p class="muted small">Últimos 7 dias: ${week} dia${week === 1 ? '' : 's'} com 4 ou mais itens.</p>` +
-      (weigh ? `<p class="msg">${lw ? 'Já faz uma semana desde a última pesagem.' : 'Registre seu peso para acompanhar a evolução.'} Pese-se em jejum, sempre no mesmo dia e horário. <a href="#progresso" data-goto="weightCard">Registrar peso</a></p>` : '');
+      (weigh ? `<div class="wdue"><span class="flbl">${lw ? 'Hora da pesagem semanal' : 'Registre seu peso'} <small class="muted">em jejum</small></span><form class="wform" id="wQuick" novalidate><input id="wQuickKg" type="text" inputmode="decimal" placeholder="kg, ex.: 82,4" aria-label="Peso de hoje em kg"><button class="btn" type="submit">Salvar</button></form></div>` : '');
     box.hidden = false;
     box.querySelectorAll('.ck').forEach(b => b.onclick = () => {
       const i = +b.dataset.i, cur = new Set(extra.diet[today] || []);
       cur.has(i) ? cur.delete(i) : cur.add(i);
       extra.diet[today] = [...cur].sort(); persist(); renderDiet();
     });
-    box.querySelectorAll('[data-goto]').forEach(a => a.onclick = () => setTimeout(() => { const t = $(a.dataset.goto); if (t) t.scrollIntoView({ block: 'start' }); }, 50));
+    const wq = $('wQuick'); if (wq) wq.onsubmit = e => { e.preventDefault(); saveWeight($('wQuickKg').value); };
+  }
+  function saveWeight(txt) {
+    const v = parseFloat(String(txt).replace(',', '.'));
+    if (!(v >= 30 && v <= 250)) { showToast('Informe o peso em kg, como 82,4.', true); return; }
+    extra.weights = extra.weights.filter(w => w.date !== today).concat({ date: today, kg: Math.round(v * 10) / 10 }).sort((a, b) => a.date.localeCompare(b.date));
+    persist(); renderWeight(); renderDiet(); showToast('Peso registrado.');
   }
   const fmtKg = v => v.toFixed(1).replace('.', ',');
   function renderWeight() {
@@ -723,13 +817,7 @@
       chart +
       `<form class="wform" id="wForm" novalidate><input id="wKg" type="text" inputmode="decimal" placeholder="Peso de hoje (kg)" aria-label="Peso de hoje em kg"><button class="btn" type="submit">Salvar</button></form>` +
       (W.length ? `<div class="wlist">${W.slice(-5).reverse().map(w => `<span>${ddmm(w.date)}</span><b>${fmtKg(w.kg)} kg</b><button type="button" class="linkbtn" data-del="${w.date}" aria-label="Apagar">apagar</button>`).join('')}</div>` : '');
-    $('wForm').onsubmit = e => {
-      e.preventDefault();
-      const v = parseFloat($('wKg').value.replace(',', '.'));
-      if (!(v >= 30 && v <= 250)) { showToast('Informe o peso em kg, como 82,4.', true); return; }
-      extra.weights = extra.weights.filter(w => w.date !== today).concat({ date: today, kg: Math.round(v * 10) / 10 }).sort((a, b) => a.date.localeCompare(b.date));
-      persist(); renderWeight(); renderDiet(); showToast('Peso registrado.');
-    };
+    $('wForm').onsubmit = e => { e.preventDefault(); saveWeight($('wKg').value); };
     box.querySelectorAll('[data-del]').forEach(b => b.onclick = () => { extra.weights = extra.weights.filter(w => w.date !== b.dataset.del); persist(); renderWeight(); });
   }
 
@@ -747,6 +835,7 @@
       : installEvt ? 'Instale o PacePro na tela inicial: ele abre em tela cheia e funciona sem internet.'
       : 'No Android, use o menu do Chrome (⋮) e toque em "Instalar app" ou "Adicionar à tela inicial".';
     $('installBtn').hidden = !installEvt || standalone;
+    $('installCard').hidden = standalone;
   }
   $('installBtn').onclick = async () => { if (!installEvt) return; installEvt.prompt(); try { await installEvt.userChoice; } catch (e) {} installEvt = null; renderInstall(); };
   if ('serviceWorker' in navigator && location.protocol === 'https:') window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
@@ -754,20 +843,42 @@
   /* ---------- Rotas ---------- */
   const VIEWS = ['hoje', 'plano', 'progresso', 'ajustes'];
   function route() {
-    const h = (location.hash || '#hoje').slice(1); const v = VIEWS.includes(h) ? h : 'hoje';
-    document.querySelectorAll('.view').forEach(s => { s.hidden = s.dataset.view !== v; });
-    document.querySelectorAll('.tabbar a').forEach(a => a.setAttribute('aria-current', a.dataset.tab === v ? 'page' : 'false'));
-    document.querySelector('.topbar').hidden = v !== 'hoje' || !plan;
+    const h = (location.hash || '#hoje').slice(1); view = VIEWS.includes(h) ? h : 'hoje';
+    document.querySelectorAll('.view').forEach(s => { s.hidden = s.dataset.view !== view; });
+    document.querySelectorAll('.tabbar a').forEach(a => a.setAttribute('aria-current', a.dataset.tab === view ? 'page' : 'false'));
+    renderHeader();
   }
   window.addEventListener('hashchange', () => { route(); window.scrollTo(0, 0); });
-  $('prevDay').onclick = () => { selected = addDays(selected, -1); renderAll(); };
-  $('nextDay').onclick = () => { selected = addDays(selected, 1); renderAll(); };
+  $('prevWeek').onclick = () => goDay(-7);
+  $('nextWeek').onclick = () => goDay(7);
+  $('goToday').onclick = () => { selected = today; renderAll(); };
+  // Arrastar para o lado na tela Hoje troca o dia.
+  (function swipe() {
+    let x0 = null, y0 = 0, t0 = 0;
+    const area = $('todayStack');
+    area.addEventListener('touchstart', e => { if (e.touches.length !== 1 || e.target.closest('.tbl, input, .seg')) { x0 = null; return; } x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; t0 = Date.now(); }, { passive: true });
+    area.addEventListener('touchend', e => {
+      if (x0 == null) return;
+      const dx = e.changedTouches[0].clientX - x0, dy = e.changedTouches[0].clientY - y0; x0 = null;
+      if (Math.abs(dx) > 70 && Math.abs(dx) > 2 * Math.abs(dy) && Date.now() - t0 < 600) goDay(dx < 0 ? 1 : -1);
+    }, { passive: true });
+  })();
+  $('syncBtn').onclick = async () => {
+    const b = $('syncBtn');
+    if (strava.connected) {
+      if (b.classList.contains('spin')) return;
+      b.classList.add('spin');
+      await syncAndAnalyze(false);
+      b.classList.remove('spin');
+    } else if (strava.checked && strava.configured === false) { location.hash = 'ajustes'; }
+    else { try { const j = await api('/api/strava/login'); location.href = j.url; } catch (e) { showToast(e.message, true); } }
+  };
 
   function renderAll() {
     const has = !!plan;
     document.querySelectorAll('[data-no-plan]').forEach(el => { el.hidden = has; });
     document.querySelectorAll('[data-needs-plan]').forEach(el => { el.hidden = !has; });
-    if (has) { renderTop(); renderSummary(); renderAdjust(); renderWorkout(); renderDiet(); renderPlan(); renderRace(); }
+    if (has) { renderSummary(); renderAdjust(); renderWorkout(); renderDiet(); renderPlan(); renderRace(); }
     renderProgress(); renderZones(); renderWeight(); renderSettings(); renderHr(); renderInstall(); bindStravaButtons(); route();
   }
   function bindStravaButtons() {

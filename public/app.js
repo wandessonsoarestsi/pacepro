@@ -208,18 +208,38 @@
     const proj = est ? A.project(est.sec, today, raceISO()) : null;
     $('sProj').textContent = proj ? A.fmtTime(proj) : '–';
 
-    // anéis: ciclo, semana, distância até a meta
-    const start = D(firstDay()).getTime(), end = race.getTime();
-    const p1 = Math.min(1, Math.max(0, (Date.now() - start) / (end - start)));
-    const p2 = keyDays.length ? nDone / keyDays.length : 0;
-    const startEst = 44 * 60;
-    const p3 = proj ? Math.min(1, Math.max(0.02, (startEst - proj) / (startEst - goalSec()))) : 0;
-    const ring = (r, p, c) => {
-      const C = 2 * Math.PI * r;
-      return `<circle cx="60" cy="60" r="${r}" fill="none" stroke="var(--sunk)" stroke-width="10"/>` +
-        `<circle cx="60" cy="60" r="${r}" fill="none" stroke="var(${c})" stroke-width="10" stroke-linecap="round" stroke-dasharray="${(C * p).toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 60 60)"/>`;
-    };
-    $('rings').innerHTML = ring(52, p1, '--c1') + ring(38, p2, '--c2') + ring(24, p3, '--c3');
+    // Ciclo: uma faixa por semana, com a semana atual preenchida até hoje
+    const nW = plan.weeks.length, cur = dayOf(today) ? dayOf(today).week : (today < firstDay() ? 0 : nW);
+    $('sCycle').innerHTML = plan.weeks.map((w, i) => {
+      const a0 = w.dates[0], a1 = w.dates[w.dates.length - 1];
+      const f = today > a1 ? 1 : today < a0 ? 0 : (D(today) - D(a0) + 864e5) / (D(a1) - D(a0) + 864e5);
+      return `<span class="${w.n === cur ? 'now' : ''}"><i style="width:${(100 * f).toFixed(0)}%"></i></span>`;
+    }).join('');
+    $('sCycleSub').textContent = today < firstDay() ? `começa em ${ddmm(firstDay())} · prova em ${ddmm(raceISO())}` : `semana ${Math.min(cur, nW)} de ${nW} · prova em ${ddmm(raceISO())}`;
+
+    // Treinos da semana: uma pílula por corrida
+    $('sPills').innerHTML = keyDays.map(x => {
+      const st = done[x.date] ? 'done' : x.date < today ? 'miss' : x.date === today ? 'today' : '';
+      return `<span class="wp ${st}" title="${esc(x.title)}"><b>${WD[D(x.date).getDay()]}</b>${st === 'done' ? '✓' : st === 'miss' ? '–' : ''}</span>`;
+    }).join('') || '<small class="muted">Sem corridas nesta semana.</small>';
+
+    // Projeção: régua de tempo, mais rápido à direita, com a meta marcada
+    const goal = goalSec();
+    const past = estimateAt(addDays(today, -14));
+    const pastProj = past ? A.project(past.sec, addDays(today, -14), raceISO()) : null;
+    if (proj) {
+      const hi = Math.max(proj, pastProj || 0, goal + 300) + 60, lo = goal - 90;
+      const X = v => 12 + (hi - Math.min(hi, Math.max(lo, v))) / (hi - lo) * 276;
+      let g = `<rect x="12" y="16" width="276" height="8" rx="4" fill="var(--sunk)"/>`;
+      g += `<rect x="${Math.min(X(proj), X(goal)).toFixed(1)}" y="16" width="${Math.abs(X(goal) - X(proj)).toFixed(1)}" height="8" fill="var(--tint-blue)"/>`;
+      g += `<line x1="${X(goal)}" x2="${X(goal)}" y1="10" y2="30" stroke="var(--c1)" stroke-width="2.5"/><text x="${X(goal)}" y="39" text-anchor="middle" font-size="10" font-weight="700" fill="var(--c1)">meta ${A.fmtTime(goal)}</text>`;
+      g += `<circle cx="${X(proj)}" cy="20" r="7" fill="var(--c3)" stroke="var(--card)" stroke-width="2"/><text x="${X(proj)}" y="9" text-anchor="middle" font-size="10" font-weight="700" fill="var(--fg)">você</text>`;
+      $('sGauge').innerHTML = g; $('sGauge').hidden = false;
+      const gap = proj - goal;
+      const trend = pastProj ? pastProj - proj : 0;
+      $('sProjSub').textContent = (gap <= 0 ? `dentro da meta (${A.fmtTime(-gap)} de folga)` : `faltam ${A.fmtTime(gap)} para a meta`) +
+        (pastProj && Math.abs(trend) >= 5 ? ` · ${trend > 0 ? '−' : '+'}${A.fmtTime(Math.abs(trend))} em 2 semanas` : '');
+    } else { $('sGauge').hidden = true; $('sProjSub').textContent = 'aparece com as primeiras corridas'; }
 
     renderStats(est, proj);
   }

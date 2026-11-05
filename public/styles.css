@@ -80,11 +80,9 @@ h3{font-size:20px;font-weight:800;margin:0;line-height:1.2;text-wrap:balance}
 .small{font-size:12.5px}
 .eyebrow{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
 
-/* Resumo com anéis */
-.summary{flex-direction:row;align-items:center;justify-content:space-between;text-decoration:none;color:inherit;position:relative;padding-right:28px}
-.summary .more{position:absolute;right:12px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:22px}
-.summary .srow b{font-size:21px}
-.summary .rings{max-width:130px}
+/* Resumo: ciclo, treinos da semana e projeção */
+.summary{flex-direction:column;gap:14px;text-decoration:none;color:inherit;position:relative;padding-right:28px}
+.summary .more{position:absolute;right:12px;top:10px;color:var(--muted);font-size:22px}
 .summary-list{display:flex;flex-direction:column;gap:14px}
 .srow{display:flex;gap:10px;align-items:center}
 .srow b{display:block;font-size:24px;font-weight:800;line-height:1.05;font-variant-numeric:tabular-nums}
@@ -296,3 +294,20 @@ details.race summary{cursor:pointer;font-weight:700;font-size:14px}
 details.race .checks2{margin-top:10px}
 details.race .checks2>div{background:var(--card)}
 #fRpe{display:grid;grid-template-columns:repeat(5,1fr)}
+
+.sm{display:flex;flex-direction:column;gap:6px;min-width:0}
+.smh{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.smh .lbl{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.smh b{font-size:20px;font-weight:800;font-variant-numeric:tabular-nums}
+.sm small{font-size:12px}
+.cycle{display:flex;gap:4px}
+.cycle span{flex:1;height:10px;border-radius:99px;background:var(--sunk);overflow:hidden}
+.cycle span.now{box-shadow:inset 0 0 0 1.5px var(--c1)}
+.cycle i{display:block;height:100%;background:var(--c1);border-radius:99px}
+.wpills{display:flex;gap:6px}
+.wp{flex:1;display:flex;flex-direction:column;align-items:center;gap:1px;padding:6px 0;border-radius:12px;background:var(--sunk);font-size:13px;font-weight:800;min-height:44px;justify-content:center;color:var(--muted)}
+.wp b{font-size:11px;letter-spacing:.06em;text-transform:uppercase;font-weight:700}
+.wp.done{background:var(--c2);color:#fff}
+.wp.miss{background:var(--tint-red);color:var(--bad)}
+.wp.today{box-shadow:inset 0 0 0 2px var(--c2);color:var(--fg)}
+.gauge{width:100%;height:auto;overflow:visible}

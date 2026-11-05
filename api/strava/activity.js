@@ -1,13 +1,12 @@
 // Detalhe de uma corrida com parciais por km e voltas. Parâmetro: id.
-const { getUser, getAccess, strava, fail } = require('../_lib');
+const { getAccess, strava, fail } = require('../_lib');
 
 module.exports = async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   try {
     const id = String(req.query.id || '').replace(/\D/g, '');
     if (!id) return res.status(400).json({ error: 'Informe o id da atividade' });
-    const user = await getUser(req);
-    const s = await getAccess(user.id);
+    const s = await getAccess(req, res);
     if (!s) return res.status(401).json({ error: 'Strava não conectado' });
     const [a, laps] = await Promise.all([strava(`/activities/${id}`, s), strava(`/activities/${id}/laps`, s)]);
     res.json({

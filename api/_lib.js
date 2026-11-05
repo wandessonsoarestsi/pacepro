@@ -1,8 +1,10 @@
-// Funções comuns: usuário do Supabase, tokens do Strava guardados no banco e chamadas à API do Strava.
+// Funções comuns da integração com o Strava. A conexão fica num cookie criptografado,
+// só no navegador que conectou. Não há login nem banco de dados.
 const crypto = require('crypto');
 
 const STRAVA = 'https://www.strava.com';
-const SB = () => (process.env.SUPABASE_URL || '').replace(/\/$/, '');
+const COOKIE = 'pp_strava';
+const NONCE = 'pp_oauth';
 
 function key() {
   const s = process.env.SESSION_SECRET;
@@ -24,6 +26,22 @@ function open(token) {
   } catch (e) { return null; }
 }
 
+function readCookie(req, name) {
+  const raw = req.headers.cookie || '';
+  const m = raw.split(/;\s*/).find(p => p.startsWith(name + '='));
+  return m ? decodeURIComponent(m.slice(name.length + 1)) : null;
+}
+function cookie(name, value, maxAge) {
+  return `${name}=${value}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAge}`;
+}
+function addCookie(res, c) {
+  const prev = res.getHeader('Set-Cookie');
+  res.setHeader('Set-Cookie', [].concat(prev || [], c));
+}
+function setSession(res, data) {
+  addCookie(res, cookie(COOKIE, data ? seal(data) : '', data ? 60 * 60 * 24 * 365 : 0));
+}
+
 function baseUrl(req) {
   if (process.env.PUBLIC_URL) return process.env.PUBLIC_URL.replace(/\/$/, '');
   const proto = req.headers['x-forwarded-proto'] || 'https';
@@ -31,40 +49,8 @@ function baseUrl(req) {
 }
 
 function needConfig() {
-  const miss = ['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'SUPABASE_SERVICE_ROLE_KEY', 'STRAVA_CLIENT_ID', 'STRAVA_CLIENT_SECRET', 'SESSION_SECRET'].filter(k => !process.env[k]);
+  const miss = ['STRAVA_CLIENT_ID', 'STRAVA_CLIENT_SECRET', 'SESSION_SECRET'].filter(k => !process.env[k]);
   if (miss.length) throw Object.assign(new Error(`Faltam variáveis no Vercel: ${miss.join(', ')}`), { status: 500 });
-}
-
-// Confere o token do Supabase enviado pelo navegador e devolve o usuário.
-async function getUser(req) {
-  const h = req.headers.authorization || '';
-  const token = h.startsWith('Bearer ') ? h.slice(7) : null;
-  if (!token) throw Object.assign(new Error('Faça login para continuar.'), { status: 401 });
-  const r = await fetch(`${SB()}/auth/v1/user`, { headers: { apikey: process.env.SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` } });
-  if (!r.ok) throw Object.assign(new Error('Sua sessão expirou. Entre de novo.'), { status: 401 });
-  return r.json();
-}
-
-// Acesso à tabela strava_tokens com a chave de serviço (nunca exposta ao navegador).
-function sbHeaders(extra) {
-  const k = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  return { apikey: k, Authorization: `Bearer ${k}`, 'Content-Type': 'application/json', ...(extra || {}) };
-}
-async function getTokens(uid) {
-  const r = await fetch(`${SB()}/rest/v1/strava_tokens?user_id=eq.${encodeURIComponent(uid)}&select=*`, { headers: sbHeaders() });
-  if (!r.ok) throw Object.assign(new Error('Erro ao ler o banco de dados.'), { status: 500 });
-  const rows = await r.json();
-  return rows[0] || null;
-}
-async function saveTokens(row) {
-  const r = await fetch(`${SB()}/rest/v1/strava_tokens?on_conflict=user_id`, {
-    method: 'POST', headers: sbHeaders({ Prefer: 'resolution=merge-duplicates,return=minimal' }),
-    body: JSON.stringify({ ...row, updated_at: new Date().toISOString() })
-  });
-  if (!r.ok) throw Object.assign(new Error('Erro ao salvar a conexão com o Strava.'), { status: 500 });
-}
-async function deleteTokens(uid) {
-  await fetch(`${SB()}/rest/v1/strava_tokens?user_id=eq.${encodeURIComponent(uid)}`, { method: 'DELETE', headers: sbHeaders() });
 }
 
 async function tokenRequest(params) {
@@ -77,19 +63,20 @@ async function tokenRequest(params) {
   return j;
 }
 
-// Devolve tokens válidos do usuário, renovando quando necessário. null se ele não conectou o Strava.
-async function getAccess(uid) {
-  const t = await getTokens(uid);
-  if (!t) return null;
-  if (t.expires_at - 120 > Date.now() / 1000) return t;
-  const j = await tokenRequest({ grant_type: 'refresh_token', refresh_token: t.refresh_token });
-  const next = { ...t, access_token: j.access_token, refresh_token: j.refresh_token, expires_at: j.expires_at };
-  await saveTokens(next);
+// Devolve a conexão válida, renovando o token quando necessário. null se o Strava não foi conectado.
+async function getAccess(req, res) {
+  const raw = readCookie(req, COOKIE);
+  const s = raw && open(raw);
+  if (!s) return null;
+  if (s.exp - 120 > Date.now() / 1000) return s;
+  const j = await tokenRequest({ grant_type: 'refresh_token', refresh_token: s.refresh });
+  const next = { ...s, access: j.access_token, refresh: j.refresh_token, exp: j.expires_at };
+  setSession(res, next);
   return next;
 }
 
-async function strava(path, t) {
-  const r = await fetch(`${STRAVA}/api/v3${path}`, { headers: { Authorization: `Bearer ${t.access_token}` } });
+async function strava(path, s) {
+  const r = await fetch(`${STRAVA}/api/v3${path}`, { headers: { Authorization: `Bearer ${s.access}` } });
   if (r.status === 429) throw Object.assign(new Error('Limite de consultas do Strava atingido. Tente em 15 minutos.'), { status: 429 });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw Object.assign(new Error(j.message || 'Erro no Strava'), { status: r.status === 401 ? 401 : 502 });
@@ -101,4 +88,4 @@ function fail(res, e) {
   res.status(status).json({ error: e.message || 'Erro inesperado' });
 }
 
-module.exports = { STRAVA, seal, open, baseUrl, needConfig, getUser, getTokens, saveTokens, deleteTokens, tokenRequest, getAccess, strava, fail };
+module.exports = { STRAVA, NONCE, seal, open, readCookie, cookie, addCookie, setSession, baseUrl, needConfig, tokenRequest, getAccess, strava, fail };

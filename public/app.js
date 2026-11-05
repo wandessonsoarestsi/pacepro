@@ -1590,7 +1590,7 @@
   function routeSvg(poly, size) {
     size = size || 64;
     let pts; try { pts = poly ? decodePoly(poly) : []; } catch (e) { pts = []; }
-    if (pts.length < 2) return `<svg class="route none" viewBox="0 0 ${size} ${size}" aria-hidden="true"><rect x="16" y="22" width="32" height="20" rx="4"/><path d="M20 42l-4 8M44 42l4 8M22 32h20"/></svg>`;
+    if (pts.length < 2) return `<svg class="route none" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="15" r="4.6"/><path d="M20 31l5-7h7l5 4 4-2M28 25l3 10M31 35l6 4-4 5M30 35l-2 7-6 6M47 47l3-16 4-4"/><path class="d" d="M15 51l32-3"/></svg>`;
     const c = Math.cos(pts[0][0] * Math.PI / 180);
     const xs = pts.map(p => p[1] * c), ys = pts.map(p => -p[0]);
     const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);

@@ -828,7 +828,7 @@
   const DIET = ['Proteína em todas as refeições', '2 a 3 litros de água', 'Frutas e verduras no almoço e no jantar', 'Carboidrato antes e depois do treino forte', 'Sem álcool e sem ultraprocessados'];
   function renderDiet() {
     const box = $('dietCard');
-    if (!plan || selected !== today) { box.hidden = true; return; }
+    if (!plan) { box.hidden = true; return; }
     const got = extra.diet[today] || [];
     let week = 0; for (let i = 0; i < 7; i++) { const g = extra.diet[addDays(today, -i)] || []; if (g.length >= 4) week++; }
     const lw = extra.weights.slice(-1)[0];

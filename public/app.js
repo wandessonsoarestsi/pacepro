@@ -33,7 +33,7 @@
   let busy = false;
 
   // Um resumo curto de cada km para o vídeo: ritmo, FC e terreno comparados com o km anterior.
-  function kmAnalysis(s, Z) {
+  function kmAnalysis(s, Z, reps) {
     const total = s.d[s.n - 1], out = [];
     const idx = m => { let i = 0; while (i < s.n - 1 && s.d[i] < m) i++; return i; };
     const segs = [];
@@ -72,6 +72,19 @@
       if (g.last) txt = (g.pace < avg - 3 ? 'Fechou forte! ' : '') + txt;
       out.push({ i: g.i1, km: true, ico: String(g.k), color: '#1a1d23', t: g.last ? `Últimos ${Math.round(g.dist)} m` : `Km ${g.k}${fast ? ' · o mais rápido' : slow ? ' · o mais lento' : ''}`, d: txt });
     });
+    // Análise geral para o cartão final
+    const half = total / 2, ih = idx(half), sum = [];
+    const p1 = (s.t[ih] - s.t[0]) / (half / 1000), p2 = (s.t[s.n - 1] - s.t[ih]) / ((total - half) / 1000), ds = Math.round(p2 - p1);
+    if (reps) sum.push(`Treino de ${reps} tiros: o resumo de cada um aparece no mapa.`);
+    else if (ds <= -5) sum.push(`Split negativo: a segunda metade foi ${-ds} s/km mais rápida. Ótima gestão de ritmo.`);
+    else if (ds >= 10) sum.push(`A segunda metade foi ${ds} s/km mais lenta. Comece um pouco mais devagar para chegar inteiro.`);
+    else sum.push('Ritmo bem distribuído entre as duas metades.');
+    const spread = Math.round(worst - best);
+    if (full.length > 2) sum.push(spread <= 12 ? `Kms muito regulares, variação de só ${spread} s.` : `Melhor km: ${A.fmtPace(best)}/km; o mais lento: ${A.fmtPace(worst)}/km.`);
+    const hrA = segs.filter(x => x.hr), h1 = hrA.slice(0, Math.ceil(hrA.length / 2)), h2 = hrA.slice(Math.ceil(hrA.length / 2));
+    const av = a => a.reduce((x, y) => x + y.hr, 0) / a.length;
+    if (h1.length && h2.length) { const dh = Math.round(av(h2) - av(h1)); sum.push(dh >= 8 ? `A FC subiu ${dh} bpm do início ao fim: sinal de cansaço acumulado.` : dh <= 2 ? 'FC controlada até o fim.' : `A FC subiu ${dh} bpm ao longo da corrida, dentro do esperado.`); }
+    out.summary = sum.join(' ');
     return out;
   }
 
@@ -699,9 +712,9 @@
       const TC = { good: cssVar('--good'), warn: cssVar('--warn'), bad: cssVar('--bad'), info: cssVar('--z1') };
       const vm = moments.map(m => ({ i: m.i1 != null ? Math.round((m.i + m.i1) / 2) : m.i, ico: m.ico, color: PC[m.cls] || '#888', t: m.t.replace(/ \(km [^)]*\)$/, ''), d: m.d, kmFast: m.cls === 'k' }));
       if (ins.reps.length) { const r0 = ins.reps[0], avgP = ins.reps.reduce((a, r) => a + r.pace, 0) / ins.reps.length; vm.push({ i: r0.i0, ico: String(ins.reps.length), color: TC[r0.tone] || TC.info, t: `${ins.reps.length} tiros`, d: `média ${RI.fmtPace(avgP)}/km${r0.target ? ` · alvo ${RI.fmtPace(r0.target)}` : ''}` }); }
-      const km = s.d[s.n - 1] / 1000, sec = s.t[s.n - 1] - s.t[0];
+      const km = s.d[s.n - 1] / 1000, sec = s.t[s.n - 1] - s.t[0], kmA = kmAnalysis(s, hasHr ? Z : null, ins.reps.length);
       window.RouteVideo.open({
-        lat: s.lat, lon: s.lon, dist: s.d, time: s.t, colors: colors(), moments: vm, kmMoments: kmAnalysis(s, hasHr ? Z : null),
+        lat: s.lat, lon: s.lon, dist: s.d, time: s.t, colors: colors(), moments: vm, kmMoments: kmA, summary: kmA.summary || '',
         meta: { title: (pd && isRunType(pd.type) ? pd.title : run.name) || 'Corrida', date: dt ? `${WDL[dt.getDay()]}, ${dt.getDate()} de ${MON[dt.getMonth()]}` : '', fileDate: run.date,
           km: km.toFixed(2).replace('.', ','), time: A.fmtTime(run.sec || sec), pace: A.fmtPace((run.sec || sec) / (run.km || km)), hr: run.hr,
           ghost: gh && gh.final ? `${gh.final < 0 ? `${-gh.final} s mais rápido` : `${gh.final} s mais lento`} que em ${ddmm(g.date)}` : '', ghostColor: gh && gh.final > 0 ? ZC[4] : ZC[2] }

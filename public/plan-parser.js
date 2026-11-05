@@ -22,6 +22,9 @@
     if (!t || t === '—' || t === '-') return 'rest';
     if (/^descanso/.test(t)) return 'rest';
     if (/nata[cç][aã]o|🏊/.test(t)) return 'swim';
+    if (/🚴/.test(t) || /^(bike|bicicleta|pedal|ciclismo)\b/.test(t)) return 'bike';
+    if (/🧘/.test(t) || /^(mobilidade|alongamento|yoga|pilates)\b/.test(t)) return 'mobility';
+    if (/🔸/.test(t)) return 'cross';
     if (/descanso/.test(t)) return 'rest';
     if (/🏆/.test(t) || /^prova\b/.test(t)) return 'race';
     if (/🏁/.test(t) || /^teste\b/.test(t)) return 'test';
@@ -35,7 +38,7 @@
   function shortTitle(rua) {
     const bold = (rua.match(/\*\*([^*]+)\*\*/g) || []).map(b => clean(b)).filter(b => b.length > 1);
     let t = bold.length ? bold.join(' + ') : clean(rua).split(/[,.(]/)[0];
-    t = t.replace(/^[🏊🏁🏆]\s*/u, '').replace(/[🏊🏁🏆]/gu, '').trim();
+    t = t.replace(/^[🏊🏁🏆🚴🧘🔸]\s*/u, '').replace(/[🏊🏁🏆🚴🧘🔸]/gu, '').trim();
     t = t.replace(/(\d+)'\s*L\b/g, "$1' leve");
     return t.length > 70 ? t.slice(0, 67).trim() + '…' : t;
   }
@@ -107,6 +110,7 @@
         gym: gymLetter, gymText: clean(musc), targetPace: paceToSec(rua)
       };
       if (type === 'swim') d.title = ('Natação ' + clean(rua).replace(/🏊|nata[cç][aã]o/gi, '').trim()).trim();
+      if (['bike', 'mobility', 'cross'].includes(type)) { const t = clean(rua).replace(/[🚴🧘🔸]/gu, '').trim(); d.title = t.charAt(0).toUpperCase() + t.slice(1); }
       if (type === 'rest') d.title = 'Descanso';
       week.days.push(d); out.days.push(d);
     }

@@ -130,6 +130,19 @@ O número de séries e repetições de cada semana está na linha em itálico ab
       : runDays === 4 ? { I: 0, T: 2, E: 4, X: null, L: 6, swim: [1, 3] }
       : { I: 0, T: 2, E: 4, X: 1, L: 6, swim: [3] };
 
+    // Outras atividades escolhidas (natação, bike, mobilidade ou outra que a pessoa escrever).
+    const CROSS = {
+      swim: { label: 'Natação', ico: '🏊', leve: 'Natação leve, 30 min', moderada: 'Natação leve a moderada, 30–40 min' },
+      bike: { label: 'Bike', ico: '🚴', leve: 'Bike leve, 30 min, giro solto', moderada: 'Bike leve a moderada, 40–50 min, giro solto' },
+      mobility: { label: 'Mobilidade', ico: '🧘', leve: 'Mobilidade e alongamento, 20 min', moderada: 'Mobilidade e alongamento, 25–30 min' }
+    };
+    const cross = (o.cross || (o.swim ? ['swim'] : [])).map(c => {
+      if (typeof c === 'string' && CROSS[c]) return { ...CROSS[c], k: c };
+      const name = String((c && c.name) || c || '').trim().slice(0, 40);
+      return name ? { k: 'other', label: name, ico: '🔸', leve: `${name} leve, 30 min`, moderada: `${name} leve a moderado, 30–45 min` } : null;
+    }).filter(Boolean);
+    const crossText = (c, lvl, short) => !c ? 'Descanso' : `${c.ico} ${short ? c.leve.split(',')[0] + ', 30 min' : c[lvl]}`;
+
     const gymFor = (dow, kinds) => {
       if (!o.gym || dow > 4) return null;
       if (kinds[dow] === 'I') return 'A';
@@ -166,7 +179,10 @@ O número de séries e repetições de cada semana está na linha em itálico ab
       const longMin = Math.round(Math.min(longCap, long0 + (w - 1) * 5) * sc / 5) * 5;
       const kinds = {};
       kinds[layout.I] = 'I'; kinds[layout.T] = 'T'; if (layout.E != null) kinds[layout.E] = 'E'; if (layout.X != null) kinds[layout.X] = 'X'; kinds[layout.L] = 'L';
-      if (o.swim) layout.swim.forEach(d => { if (!kinds[d]) kinds[d] = 'S'; });
+      // Outras atividades nos dias sem corrida, revezando quando houver mais atividades que dias.
+      const free = layout.swim.filter(d => !kinds[d]);
+      const crossOf = {};
+      if (cross.length) free.forEach((d, i) => { kinds[d] = 'S'; crossOf[d] = cross[(i + (cross.length > free.length ? (w - 1) * free.length : 0)) % cross.length]; });
 
       const rows = [];
       for (let d = 0; d < 7; d++) {
@@ -185,7 +201,7 @@ O número de séries e repetições de cada semana está na linha em itálico ab
           const daysToRace = (D(o.race) - D(date)) / DAY;
           if (k === 'I' && daysToRace >= 5) { rua = `10' L + **3 × 800 m a ${fmtPace(goalPace)}/km**, pausa 2'30" + 5' L`; est = `3 × 800 m a **${kmh(goalPace)} km/h**`; key = true; }
           else if ((k === 'T' || k === 'E' || k === 'X') && daysToRace >= 2) { rua = `**${daysToRace <= 3 ? 15 : 25}' L + ${daysToRace <= 3 ? 3 : 4} strides**`; est = `${easyEst} + strides a ${kmh(P.rep)}`; key = true; }
-          else if (k === 'S' && daysToRace >= 4) rua = '🏊 Natação leve, 30 min';
+          else if (k === 'S' && daysToRace >= 4) rua = crossText(crossOf[d], 'leve', true);
           else rua = daysToRace <= 1 ? 'Descanso. Separe kit, número e tênis.' : 'Descanso';
         } else if (k === 'I') {
           key = true;
@@ -210,7 +226,7 @@ O número de séries e repetições de cada semana está na linha em itálico ab
           key = true;
           if (ph === 'Semana do teste') { rua = `🏁 **TESTE ${km(testDist)} km** — progressivo, km 1 levemente mais lento e o último o mais rápido`; est = 'De preferência na rua'; }
           else { rua = `**${longMin}' L** (FC ≤ 145)`; est = easyEst; }
-        } else if (k === 'S') rua = ph === 'Semana do teste' || ph === 'Semana leve' ? '🏊 Natação leve' : '🏊 Natação leve a moderada';
+        } else if (k === 'S') rua = crossText(crossOf[d], ph === 'Semana do teste' || ph === 'Semana leve' ? 'leve' : 'moderada');
         else rua = 'Descanso';
 
         let g = null;
@@ -223,7 +239,7 @@ O número de séries e repetições de cada semana está na linha em itálico ab
       const a0 = mon < o.start ? o.start : mon, b0 = sun > o.race ? o.race : sun;
       weeks.push(`### Semana ${weeks.length + 1} — ${ph} (${a0.slice(5, 7) === b0.slice(5, 7) ? a0.slice(8, 10) : dm(a0)} a ${dm(b0)})
 ${o.gym ? `*${gymNote(w)}*\n` : ''}
-| Data | Corrida / Natação (rua) | Esteira | Musculação |
+| Data | ${cross.length ? 'Corrida / outras atividades' : 'Corrida'} (rua) | Esteira | Musculação |
 |---|---|---|---|
 ${rows.join('\n')}`);
     }
@@ -244,7 +260,7 @@ ${rows.join('\n')}`);
 - **Forma atual:** VDOT ${curV.toFixed(1).replace('.', ',')}, que prevê ${fmtTime(predicted)} nos ${km(o.distanceKm)} km.
 - **Meta:** VDOT ${goalV.toFixed(1).replace('.', ',')} (${fmtPace(goalPace)}/km).
 - ${realism}
-- **Estrutura:** ${runDays} corridas por semana${o.swim ? ', natação' : ''}${o.gym ? ', musculação de segunda a sexta' : ''}. Cerca de 80% do volume é leve (FC até ~145). Ritmos dos treinos fortes sobem até 0,8 VDOT por semana em direção à meta.
+- **Estrutura:** ${runDays} corridas por semana${cross.length ? ', ' + cross.map(c => c.label.toLowerCase()).join(', ') + ' nos dias sem corrida' : ''}${o.gym ? ', musculação de segunda a sexta' : ''}. Cerca de 80% do volume é leve (FC até ~145). Ritmos dos treinos fortes sobem até 0,8 VDOT por semana em direção à meta.
 ${testWeek ? `- **Teste:** no domingo da semana ${testWeek}. Se o resultado vier diferente do previsto, gere o plano de novo a partir dele.\n` : ''}
 | Ritmo | Hoje | Na meta |
 |---|---|---|

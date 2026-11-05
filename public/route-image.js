@@ -27,6 +27,7 @@
       <div class="is-seg" role="group" aria-label="Fundo"><button type="button" data-bg="map" aria-pressed="true">Mapa</button><button type="button" data-bg="art" aria-pressed="false">Arte da rota</button><button type="button" data-bg="clear" aria-pressed="false">Transparente</button></div>
       <div class="is-seg" role="group" aria-label="Formato"><button type="button" data-fmt="feed" aria-pressed="true">Feed 4:5</button><button type="button" data-fmt="story" aria-pressed="false">Stories 9:16</button></div>
       <div class="vs-actions">
+        ${opt('stats', 'Dados da corrida', 'Distância, tempo, pace e FC média', true)}
         ${d.moments.length ? opt('moments', 'Momentos no mapa', 'Km mais rápido, pico, FC mais alta, subida e onde cansou', true) : ''}
         ${d.ghost ? opt('ghost', 'Corredor fantasma', `Contra ${d.ghost.label} (${d.ghost.date})`, true) : ''}
         ${d.compare ? opt('compare', 'Comparação', `Com o mesmo treino ${d.compare.when} (${d.compare.date})`, true) : ''}
@@ -38,7 +39,7 @@
     const $ = s => box.querySelector(s);
     const cv = $('.vs-canvas'), ctx = cv.getContext('2d');
     let map = null, closed = false, job = 0, H = 1350;
-    const st = { bg: 'map', fmt: 'feed', moments: !!d.moments.length, ghost: !!d.ghost, compare: !!d.compare, predict: !!d.predict };
+    const st = { stats: true, bg: 'map', fmt: 'feed', moments: !!d.moments.length, ghost: !!d.ghost, compare: !!d.compare, predict: !!d.predict };
     const close = () => { closed = true; try { map && map.remove(); } catch (e) {} box.remove(); document.body.classList.remove('noscroll'); };
     $('.vs-x').onclick = close;
     const font = (w, s) => `${w} ${s}px Figtree, -apple-system, "Segoe UI", Roboto, sans-serif`;
@@ -69,7 +70,7 @@
     function blocks() {
       const out = [], X = 48, CWd = W - 96, compact = st.fmt === 'feed';
       const G = st.ghost && d.ghost, Pd = st.predict && d.predict;
-      out.push({ h: 150, draw: y => {
+      if (st.stats) out.push({ h: 150, draw: y => {
         card(X, y, CWd, 150);
         const cells = [[d.meta.km, 'km'], [d.meta.time, 'tempo'], [d.meta.pace, 'pace /km'], [d.meta.hr ? String(d.meta.hr) : '–', 'FC média']];
         cells.forEach(([v, l], k) => { const cx = X + CWd * (k + 0.5) / 4; txt(v, cx, y + 82, fit(v, CWd / 4 - 20, 54, 800), 800, INK, 'center'); txt(l, cx, y + 120, 24, 600, MUTED, 'center'); if (k) { ctx.fillStyle = LINE; ctx.fillRect(X + CWd * k / 4, y + 34, 2, 82); } });
@@ -191,9 +192,13 @@
       flag(P[0], GOOD, 'L'); flag(P[n - 1], '#14171C', 'C');
     }
     // Mancha escura e desfocada (só a sombra de um retângulo desenhado fora da tela).
+    // Gradiente radial elíptico: mais escuro no centro e sumindo até zero nas bordas, sem corte visível.
     function vignette(x, y, w, h, a) {
-      ctx.save(); ctx.shadowColor = `rgba(0,0,0,${a})`; ctx.shadowBlur = 140; ctx.shadowOffsetX = 20000;
-      rr(x - 20000, y, w, h, Math.min(w, h) / 3); ctx.fillStyle = '#000'; ctx.fill(); ctx.restore();
+      const cx = x + w / 2, cy = y + h / 2, rx = w * 0.75, ry = h * 0.75;
+      ctx.save(); ctx.translate(cx, cy); ctx.scale(rx, ry);
+      const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);
+      [[0, 1], [0.35, 0.85], [0.6, 0.5], [0.8, 0.2], [1, 0]].forEach(([o, k]) => g.addColorStop(o, `rgba(0,0,0,${(a * k).toFixed(3)})`));
+      ctx.fillStyle = g; ctx.fillRect(-1, -1, 2, 2); ctx.restore();
     }
     // Pegadas do ícone, sem o fundo verde.
     const FOOT = ['M340 560 C300 440 320 300 400 290 C480 280 500 420 470 560 C455 620 360 620 340 560 Z', 'M600 380 C560 260 580 120 660 110 C740 100 760 240 730 380 C715 440 620 440 600 380 Z'].map(t => new Path2D(t));
@@ -274,11 +279,13 @@
         ctx.fillStyle = 'rgba(20,23,28,.07)'; for (let x = 36; x < W; x += 48) for (let y = 36; y < H; y += 48) { ctx.beginPath(); ctx.arc(x, y, 2, 0, 7); ctx.fill(); }
       }
       // Transparente: vinheta preta suave atrás da rota e dos dados, para destacar em fotos claras.
+      let brandY = 0;
       if (clear) {
         const xs = P.map(p => p[0]), ys = P.map(p => p[1]);
         const bx = Math.min(...xs), by = Math.min(...ys), bw = Math.max(...xs) - bx, bh = Math.max(...ys) - by;
-        vignette(bx - 60, by - 60, bw + 120, bh + 120, 0.24);
-        vignette(48, cardsTop - brandH, W - 96, H - 56 - cardsTop + brandH, 0.26);
+        brandY = Math.min(cardsTop - brandH / 2 - 4, by + bh + 70);
+        vignette(bx - 40, by - 40, bw + 80, brandY + 40 - by + 40, 0.3);
+        if (B.length) vignette(48, cardsTop - 10, W - 96, H - 56 - cardsTop + 20, 0.32);
       }
       // rota
       const useGhost = st.ghost && d.ghost;
@@ -287,7 +294,7 @@
       if (useGhost && d.ghost.markDist != null) extra.push({ ghost: true, p: P[idxAt(d.ghost.markDist)], s: d.ghost.markLabel });
       drawMoments(P, rect, st.moments, extra);
       if (clear) {
-        ctx.font = font(900, 40); const bw = 58 + 14 + ctx.measureText('PacePro').width, bx = (W - bw) / 2, cy = cardsTop - brandH / 2 - 4;
+        ctx.font = font(900, 40); const bw = 58 + 14 + ctx.measureText('PacePro').width, bx = (W - bw) / 2, cy = brandY;
         feet(bx + 29, cy, 58); txt('PacePro', bx + 72, cy + 14, 40, 900, INK);
       } else {
         legend(useGhost ? d.ghost.legend : d.legend, 48, top + 4);

@@ -4,6 +4,17 @@ Plano de corrida pessoal: treino do dia detalhado, contagem regressiva, tempo es
 e análise de cada treino com os dados do Strava. Modo claro e escuro. Sem login: os dados ficam no
 aparelho (com backup em Ajustes) e a conexão com o Strava fica num cookie criptografado do navegador.
 
+## Funções
+
+- Treino do dia, plano completo, contagem regressiva e estimativa de tempo.
+- Análise automática: ao abrir o app, as corridas do Strava dos últimos 7 dias são ligadas aos dias do plano e analisadas.
+- Como foi o treino: esforço (1 a 10), dor e sono. Sinais de cansaço sugerem trocar o próximo treino forte por leve.
+- Ajuste do plano: treino-chave que ficou sem fazer pode ser passado para outro dia da semana ou pulado (tudo pode ser desfeito).
+- Zonas de FC (do plano, da FC máxima informada ou da maior FC dos treinos) e tempo em cada zona.
+- Plano de prova com ritmo por km e checklist do dia.
+- Alimentação do dia e registro de peso.
+- Instalável como app (PWA), funciona sem internet.
+
 ## Estrutura
 
 - `public/` — o site (HTML, CSS e JS, sem build).

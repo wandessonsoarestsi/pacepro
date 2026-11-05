@@ -268,7 +268,8 @@
     if (!strava.connected) return;
     const after = Math.floor(D(addDays(today, -90)).getTime() / 1000);
     const list = await api(`/api/strava/activities?after=${after}`);
-    runs = list.map(a => ({ id: 's' + a.id, stravaId: a.id, date: a.start.slice(0, 10), name: a.name, km: a.distance / 1000, sec: a.moving_time, hr: a.average_heartrate ? Math.round(a.average_heartrate) : null, poly: a.poly || null, trainer: !!a.trainer }));
+    const pf = polyFix();
+    runs = list.map(a => ({ id: 's' + a.id, stravaId: a.id, date: a.start.slice(0, 10), name: a.name, km: a.distance / 1000, sec: a.moving_time, hr: a.average_heartrate ? Math.round(a.average_heartrate) : null, poly: a.poly || pf[a.id] || null, trainer: !!a.trainer }));
     store.set(userKey('runs'), runs);
     store.set(userKey('synced'), Date.now());
   }
@@ -1927,6 +1928,33 @@
     const [sx, sy] = P(0).split(','), [ex, ey] = P(xs.length - 1).split(',');
     return `<svg class="route" viewBox="0 0 ${size} ${size}" aria-hidden="true"><path d="${d}"/><circle class="s" cx="${sx}" cy="${sy}" r="2.6"/><circle class="e" cx="${ex}" cy="${ey}" r="2.6"/></svg>`;
   }
+  // Alguns relógios (ex.: Zepp) mandam a corrida ao Strava sem o percurso resumido. Nesses casos o
+  // percurso vem dos dados ponto a ponto e fica guardado no aparelho ('' = corrida sem GPS).
+  const polyFix = () => store.get('pp.polyfix', {});
+  function encodePoly(pts) {
+    let out = '', pa = 0, pb = 0;
+    const enc = v => { v = v < 0 ? ~(v << 1) : v << 1; let t = ''; while (v >= 0x20) { t += String.fromCharCode((0x20 | (v & 0x1f)) + 63); v >>= 5; } return t + String.fromCharCode(v + 63); };
+    for (const [la, lo] of pts) { const a = Math.round(la * 1e5), b = Math.round(lo * 1e5); out += enc(a - pa) + enc(b - pb); pa = a; pb = b; }
+    return out;
+  }
+  let polyBusy = false;
+  async function fillMissingPolys(list) {
+    if (polyBusy || !strava.connected) return;
+    const fix = polyFix(), miss = list.filter(r => r.stravaId && !r.poly && !r.trainer && fix[r.stravaId] === undefined);
+    if (!miss.length) return;
+    polyBusy = true; let changed = false;
+    for (const r of miss) {
+      try {
+        const s = await getStreams(r.stravaId);
+        let poly = '';
+        if (s && s.n > 1) { const step = Math.max(1, Math.floor(s.n / 120)), pts = []; for (let i = 0; i < s.n; i += step) pts.push([s.lat[i], s.lon[i]]); pts.push([s.lat[s.n - 1], s.lon[s.n - 1]]); poly = encodePoly(pts); }
+        fix[r.stravaId] = poly; changed = true;
+        runs.forEach(x => { if (String(x.stravaId) === String(r.stravaId) && poly) x.poly = poly; });
+      } catch (e) { if (e.status === 401) break; }
+    }
+    polyBusy = false;
+    if (changed) { store.set('pp.polyfix', fix); store.set(userKey('runs'), runs); renderRecent(); }
+  }
   function renderRecent() {
     const box = $('recentCard'); if (!box) return;
     const rs = allRuns().slice(-3).reverse();
@@ -1945,6 +1973,7 @@
     }).join('') + `</div>`;
     bindGoto(box);
     box.querySelectorAll('.rc').forEach(b => b.onclick = () => openRunSheet(b.dataset.sid));
+    fillMissingPolys(rs);
   }
 
   /* ---------- Rotas ---------- */

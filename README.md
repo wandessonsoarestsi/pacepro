@@ -14,6 +14,10 @@ aparelho (com backup em Ajustes) e a conexão com o Strava fica num cookie cript
 - Plano de prova com ritmo por km e checklist do dia.
 - Alimentação do dia e registro de peso.
 - Instalável como app (PWA), funciona sem internet.
+- Ritmos de limiar e intervalado recalculados pelo teste de 5 km (VDOT).
+- Clima no horário do treino (Open-Meteo) com ajuste de ritmo pelo calor.
+- Volume semanal com a relação de carga dos últimos 7 dias contra os últimos 28.
+- Resumo da semana, calculadora de ritmo, cadência com metrônomo e cartões para compartilhar.
 
 ## Estrutura
 

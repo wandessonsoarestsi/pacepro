@@ -17,6 +17,16 @@
   const WDL = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
   const MON = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
   const ddmm = s => `${s.slice(8, 10)}/${s.slice(5, 7)}`;
+  // Contagem de uso no Vercel Web Analytics. Cada funcionalidade aparece como uma página /uso/... no painel.
+  // Não envia nome, Strava nem dados dos treinos: só o nome da funcionalidade.
+  function track(name) {
+    try {
+      if (!window.va || /^(localhost|127\.)/.test(location.hostname)) return;
+      const path = '/uso/' + name;
+      window.va('pageview', { route: path, path });
+      window.va('event', { name });
+    } catch (e) {}
+  }
 
 
   let plan = null, planSource = '';
@@ -524,7 +534,7 @@
       maybeSetTest(day, an);
       persist();
       try { await syncRuns(); } catch (e) {}
-      busy = false; renderAll();
+      busy = false; renderAll(); track('treino-analisado');
     } catch (e) { busy = false; say(esc(e.message), 'bad'); }
   }
 
@@ -608,6 +618,7 @@
     node.innerHTML = '<p class="muted small">Carregando o mapa da corrida…</p>';
     slot.replaceWith(node);
     rm = RM[key] = { id, node, map: null };
+    track('mapa-percurso');
     const alive = () => RM[key] === rm;
     try {
       const s = await getStreams(id);
@@ -725,7 +736,7 @@
     node.querySelectorAll('.rt-modes button').forEach(b => b.onclick = () => { mode = b.dataset.m; store.set('pp.rmode', mode); paint(); });
     const ib = node.querySelector('.rt-image');
     if (ib) ib.onclick = async () => {
-      if (ib.disabled) return; ib.disabled = true; const t0 = ib.textContent; ib.textContent = 'Preparando…';
+      if (ib.disabled) return; track('imagem-percurso'); ib.disabled = true; const t0 = ib.textContent; ib.textContent = 'Preparando…';
       try { await loadRouteImage(); window.RouteImage.open(await imageData()); } catch (e) { showToast('Não consegui preparar a imagem. Confira a internet.', true); }
       ib.disabled = false; ib.textContent = t0;
     };
@@ -770,6 +781,7 @@
     }
     const vb = node.querySelector('.rt-video');
     if (vb) vb.onclick = () => {
+      track('video-percurso');
       const run = runs.find(r => String(r.stravaId) === String(rm.id)) || {};
       const pd = plan && run.date && dayAt(run.date), dt = run.date ? D(run.date) : null;
       const PC = { k: cssVar('--c1'), v: cssVar('--c2'), h: cssVar('--bad'), c: cssVar('--c3'), f: cssVar('--warn'), g: '#7A5AF8' };
@@ -969,7 +981,7 @@
       if (!generated) return;
       const curTyped = toSec($('gCur').value);
       if (curTyped) done._base = { date: today, sec: curTyped };
-      setPlanMd(generated, 'gerado no app');
+      setPlanMd(generated, 'gerado no app'); track('plano-gerado');
       $('genActions').hidden = true;
       genOpen = false; $('genMsg').hidden = true; location.hash = 'hoje'; showToast('Plano novo em uso.');
     };
@@ -1491,6 +1503,7 @@
   }
   function startMetro(bpm) {
     const Ctx = window.AudioContext || window.webkitAudioContext; if (!Ctx) { showToast('Seu navegador não toca o metrônomo.', true); return; }
+    track('metronomo');
     const ctx = new Ctx(); metro = { ctx, bpm, next: ctx.currentTime + 0.1, n: 0 };
     const tick = () => {
       while (metro && metro.next < ctx.currentTime + 0.2) {
@@ -1530,6 +1543,7 @@
   }
   async function shareWorkout(day) {
     const st = done[day.date]; if (!st || !st.analysis) return;
+    track('compartilhar-treino');
     const a = st.analysis, m = a.metrics;
     const blob = await makeCard((ctx, F) => {
       ctx.fillStyle = '#2CC0B3'; ctx.font = F(700, 30); ctx.fillText(`${WDL[D(day.date).getDay()].toUpperCase()}, ${ddmm(day.date)} · ${TYPE_LABEL[day.type].toUpperCase()}`, 72, 290);
@@ -1555,6 +1569,7 @@
     shareBlob(blob, `pacepro-${day.date}.png`, `${day.title} · ${m.distKm.toFixed(1).replace('.', ',')} km`);
   }
   async function shareProgress() {
+    track('compartilhar-progresso');
     const est = estimateAt(today), proj = est ? A.project(est.sec, today, raceISO()) : null;
     const days = Math.max(0, Math.ceil((D(raceISO()) - D(today)) / 864e5));
     const blob = await makeCard((ctx, F) => {
@@ -1661,6 +1676,7 @@
   // Tela da prova: cronômetro, alvo de cada km e quanto está na frente ou atrás.
   let rmTimer = null, rmLock = null;
   function openRaceMode() {
+    track('modo-prova');
     const r = racePlan(); let box = $('raceMode');
     if (!box) { box = document.createElement('div'); box.id = 'raceMode'; box.className = 'racemode'; document.body.appendChild(box); }
     const live = () => (extra.race && extra.race.live) || null;
@@ -1980,7 +1996,8 @@
   /* ---------- Rotas ---------- */
   const VIEWS = ['hoje', 'plano', 'progresso', 'provas', 'ajustes'];
   function route() {
-    const h = (location.hash || '#hoje').slice(1); view = VIEWS.includes(h) ? h : 'hoje';
+    const h = (location.hash || '#hoje').slice(1), prev = view; view = VIEWS.includes(h) ? h : 'hoje';
+    if (view !== prev) track('aba-' + view);
     document.querySelectorAll('.view').forEach(s => { s.hidden = s.dataset.view !== view; });
     document.querySelectorAll('.tabbar a').forEach(a => a.setAttribute('aria-current', a.dataset.tab === view ? 'page' : 'false'));
     renderHeader();
@@ -2029,7 +2046,7 @@
     document.querySelectorAll('[data-strava-connect]').forEach(b => {
       b.onclick = async () => {
         b.disabled = true;
-        try { const j = await api('/api/strava/login'); location.href = j.url; }
+        try { track('strava-clique-conectar'); const j = await api('/api/strava/login'); location.href = j.url; }
         catch (e) { b.disabled = false; showToast(e.message, true); }
       };
     });
@@ -2065,7 +2082,8 @@
     renderSettings();
     if (strava.connected) await syncAndAnalyze(true);
     renderAll();
-    if (q === 'ok') showToast('Strava conectado.');
+    if (q === 'ok') { showToast('Strava conectado.'); track('strava-conectado'); }
+    if (strava.connected) track('usuario-com-strava');
     if (q === 'erro' || q === 'scope') { location.hash = 'ajustes'; showToast(q === 'scope' ? 'Autorize o acesso às atividades para analisar os treinos.' : 'Não consegui conectar ao Strava. Tente de novo.', true); }
     setInterval(() => { if (plan) renderSummary(); }, 60000);
   })();

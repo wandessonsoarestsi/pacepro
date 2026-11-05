@@ -194,10 +194,13 @@
     // Mancha escura e desfocada (só a sombra de um retângulo desenhado fora da tela).
     // Gradiente radial elíptico: mais escuro no centro e sumindo até zero nas bordas, sem corte visível.
     function vignette(x, y, w, h, a) {
-      const cx = x + w / 2, cy = y + h / 2, rx = w * 0.75, ry = h * 0.75;
+      // O raio para antes da borda da imagem: se passar, o Instagram mostra o corte quando o adesivo é reduzido.
+      const cx = Math.min(W - 40, Math.max(40, x + w / 2)), cy = Math.min(H - 40, Math.max(40, y + h / 2));
+      const rx = Math.max(40, Math.min(w * 0.8, cx - 8, W - 8 - cx)), ry = Math.max(40, Math.min(h * 0.8, cy - 8, H - 8 - cy));
       ctx.save(); ctx.translate(cx, cy); ctx.scale(rx, ry);
       const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);
-      [[0, 1], [0.35, 0.85], [0.6, 0.5], [0.8, 0.2], [1, 0]].forEach(([o, k]) => g.addColorStop(o, `rgba(0,0,0,${(a * k).toFixed(3)})`));
+      // queda suave (cosseno), chegando a zero sem degrau
+      for (let k = 0; k <= 12; k++) { const o = k / 12; g.addColorStop(o, `rgba(0,0,0,${(a * (0.5 + 0.5 * Math.cos(Math.PI * o))).toFixed(3)})`); }
       ctx.fillStyle = g; ctx.fillRect(-1, -1, 2, 2); ctx.restore();
     }
     // Pegadas do ícone, sem o fundo verde.

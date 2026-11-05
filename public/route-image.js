@@ -102,7 +102,7 @@
             txt(sub, X + 124, y + 102, fit(sub, CWd - 150, 24, 600), 600, MUTED);
             if (kms.length) {
               const cw = (CWd - 64 - (kms.length - 1) * 8) / kms.length;
-              kms.forEach((k, j) => { const x = X + 32 + j * (cw + 8); rr(x, y + 128, cw, 42, 21); ctx.fillStyle = k.diff < 0 ? '#DDF3E8' : k.diff > 0 ? '#F9DEDC' : '#EEF0F3'; ctx.fill(); const t = `km ${k.k} ${k.diff > 0 ? '+' : k.diff < 0 ? '−' : '±'}${Math.abs(k.diff)}s`; txt(t, x + cw / 2, y + 157, fit(t, cw - 10, 22, 700), 700, k.diff < 0 ? GOOD : k.diff > 0 ? BAD : MUTED, 'center'); });
+              kms.forEach((k, j) => { const x = X + 32 + j * (cw + 8); rr(x, y + 128, cw, 42, 21); ctx.fillStyle = CLEAR ? 'rgba(0,0,0,.32)' : k.diff < 0 ? '#DDF3E8' : k.diff > 0 ? '#F9DEDC' : '#EEF0F3'; ctx.fill(); const t = `km ${k.k} ${k.diff > 0 ? '+' : k.diff < 0 ? '−' : '±'}${Math.abs(k.diff)}s`; txt(t, x + cw / 2, y + 157, fit(t, cw - 10, 22, 700), 700, k.diff < 0 ? GOOD : k.diff > 0 ? BAD : MUTED, 'center'); });
             }
           } });
         }
@@ -113,7 +113,7 @@
             txt('PREVISÃO DE PROVA', X + 32, y + 50, 22, 800, ORANGE);
             txt(p.big, X + 32, y + 98, fit(p.big, CWd - 64, 42, 800), 800, INK);
             if (p.small) txt(p.small, X + 32, y + 134, fit(p.small, CWd - 64, 25, 600), 600, p.ok ? GOOD : MUTED);
-            if (p.pct != null) { rr(X + 32, y + 150, CWd - 64, 12, 6); ctx.fillStyle = '#EEF0F3'; ctx.fill(); rr(X + 32, y + 150, Math.max(12, (CWd - 64) * p.pct), 12, 6); ctx.fillStyle = p.ok ? GOOD : '#F08A24'; ctx.fill(); }
+            if (p.pct != null) { rr(X + 32, y + 150, CWd - 64, 12, 6); ctx.fillStyle = CLEAR ? 'rgba(255,255,255,.3)' : '#EEF0F3'; ctx.fill(); rr(X + 32, y + 150, Math.max(12, (CWd - 64) * p.pct), 12, 6); ctx.fillStyle = p.ok ? GOOD : '#F08A24'; ctx.fill(); }
           } });
         }
       }
@@ -190,6 +190,20 @@
       const flag = ([x, y], c, t) => { ctx.beginPath(); ctx.arc(x, y, 20, 0, 7); ctx.fillStyle = '#fff'; ctx.fill(); ctx.beginPath(); ctx.arc(x, y, 14, 0, 7); ctx.fillStyle = c; ctx.fill(); txt(t, x, y + 6, 16, 900, '#fff', 'center'); };
       flag(P[0], GOOD, 'L'); flag(P[n - 1], '#14171C', 'C');
     }
+    // Mancha escura e desfocada (só a sombra de um retângulo desenhado fora da tela).
+    function vignette(x, y, w, h, a) {
+      ctx.save(); ctx.shadowColor = `rgba(0,0,0,${a})`; ctx.shadowBlur = 140; ctx.shadowOffsetX = 20000;
+      rr(x - 20000, y, w, h, Math.min(w, h) / 3); ctx.fillStyle = '#000'; ctx.fill(); ctx.restore();
+    }
+    // Pegadas do ícone, sem o fundo verde.
+    const FOOT = ['M340 560 C300 440 320 300 400 290 C480 280 500 420 470 560 C455 620 360 620 340 560 Z', 'M600 380 C560 260 580 120 660 110 C740 100 760 240 730 380 C715 440 620 440 600 380 Z'].map(t => new Path2D(t));
+    function feet(cx, cy, size) {
+      const k = size / 700; ctx.save(); ctx.translate(cx, cy); ctx.scale(k, k); ctx.rotate(-20 * Math.PI / 180); ctx.translate(-512, -420);
+      ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 20;
+      ctx.fillStyle = '#fff'; ctx.fill(FOOT[0]); ctx.beginPath(); ctx.ellipse(410, 700, 62, 80, 0, 0, 7); ctx.fill();
+      ctx.fillStyle = '#F08A24'; ctx.fill(FOOT[1]); ctx.beginPath(); ctx.ellipse(670, 520, 62, 80, 0, 0, 7); ctx.fill();
+      ctx.restore();
+    }
     function pin(x, y, r, color, ico) {
       ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.3)'; ctx.shadowBlur = 10; ctx.beginPath(); ctx.arc(x, y, r + 5, 0, 7); ctx.fillStyle = '#fff'; ctx.fill(); ctx.restore();
       ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = color; ctx.fill();
@@ -234,10 +248,12 @@
       try { await document.fonts.load('800 40px Figtree'); } catch (e) {}
       const ic = await loadIcon();
       const B = blocks(), gap = 20, story = st.fmt === 'story';
-      const tl = lines(d.meta.title, W - 96, 58, 900, story ? 2 : 1), top = 150 + tl.length * 64;
-      const cardsTop = H - 56 - B.reduce((a, b) => a + b.h + gap, 0) + gap;
-      const rect = { x: 110, y: top + 50, w: W - 220, h: Math.max(200, cardsTop - top - 110) };
-      rect.lim = [top + 56, cardsTop - 16];
+      const clear = st.bg === 'clear';
+      // Transparente: sem cabeçalho (título, data e legenda); a marca vai abaixo do mapa.
+      const tl = clear ? [] : lines(d.meta.title, W - 96, 58, 900, story ? 2 : 1), top = clear ? 40 : 150 + tl.length * 64;
+      const cardsTop = H - 56 - B.reduce((a, b) => a + b.h + gap, 0) + gap, brandH = clear ? 96 : 0;
+      const rect = { x: 110, y: top + 50, w: W - 220, h: Math.max(200, cardsTop - brandH - top - 110) };
+      rect.lim = [clear ? 24 : top + 56, cardsTop - brandH - 16];
       let P;
       try {
         if (st.bg === 'map') P = await mapProj(rect);
@@ -257,17 +273,28 @@
         const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#FBF8F3'); g.addColorStop(1, '#EFEBE3'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
         ctx.fillStyle = 'rgba(20,23,28,.07)'; for (let x = 36; x < W; x += 48) for (let y = 36; y < H; y += 48) { ctx.beginPath(); ctx.arc(x, y, 2, 0, 7); ctx.fill(); }
       }
+      // Transparente: vinheta preta suave atrás da rota e dos dados, para destacar em fotos claras.
+      if (clear) {
+        const xs = P.map(p => p[0]), ys = P.map(p => p[1]);
+        const bx = Math.min(...xs), by = Math.min(...ys), bw = Math.max(...xs) - bx, bh = Math.max(...ys) - by;
+        vignette(bx - 60, by - 60, bw + 120, bh + 120, 0.24);
+        vignette(48, cardsTop - brandH, W - 96, H - 56 - cardsTop + brandH, 0.26);
+      }
       // rota
       const useGhost = st.ghost && d.ghost;
       drawRoute(P, useGhost ? d.ghost.colors : d.colors, st.bg === 'art');
       const extra = [];
       if (useGhost && d.ghost.markDist != null) extra.push({ ghost: true, p: P[idxAt(d.ghost.markDist)], s: d.ghost.markLabel });
       drawMoments(P, rect, st.moments, extra);
-      legend(useGhost ? d.ghost.legend : d.legend, 48, top + 4);
-      // cabeçalho
-      if (ic) ctx.drawImage(ic, 48, 52, 72, 72);
-      txt('PacePro', 136, 104, 38, 900, INK);
-      txt(d.meta.date, W - 48, 100, 26, 700, MUTED, 'right');
+      if (clear) {
+        ctx.font = font(900, 40); const bw = 58 + 14 + ctx.measureText('PacePro').width, bx = (W - bw) / 2, cy = cardsTop - brandH / 2 - 4;
+        feet(bx + 29, cy, 58); txt('PacePro', bx + 72, cy + 14, 40, 900, INK);
+      } else {
+        legend(useGhost ? d.ghost.legend : d.legend, 48, top + 4);
+        if (ic) ctx.drawImage(ic, 48, 52, 72, 72);
+        txt('PacePro', 136, 104, 38, 900, INK);
+        txt(d.meta.date, W - 48, 100, 26, 700, MUTED, 'right');
+      }
       tl.forEach((l, k) => txt(l, 48, 196 + k * 64, fit(l, W - 96, 58, 900), 900, INK));
       // cartões
       let y = cardsTop;

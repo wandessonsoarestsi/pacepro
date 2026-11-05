@@ -599,7 +599,7 @@
     const el = node.querySelector('.rt-map');
     const map = L.map(el, { zoomControl: false, attributionControl: true, scrollWheelZoom: false, dragging: !L.Browser.mobile, tap: false, zoomSnap: 0.25 });
     rm.map = map; map.attributionControl.setPrefix(false);
-    L.tileLayer(`https://{s}.basemaps.cartocdn.com/${isDarkUI() ? 'dark_all' : 'rastertiles/voyager'}/{z}/{x}/{y}{r}.png`, { maxZoom: 19, subdomains: 'abcd', attribution: '© OpenStreetMap · © CARTO' }).addTo(map);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, className: isDarkUI() ? 'osm-dark' : '', attribution: '© OpenStreetMap' }).addTo(map);
     const bounds = L.latLngBounds(pts); map.fitBounds(bounds, { padding: [18, 18] });
     L.polyline(pts, { color: isDarkUI() ? '#000' : '#fff', weight: 8, opacity: .55, interactive: false }).addTo(map);
     let colorLayer = null;

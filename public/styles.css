@@ -484,3 +484,4 @@ details.acts small{display:block}
 .rs-body{flex:1;overflow-y:auto;padding:14px 16px max(24px,env(safe-area-inset-bottom));-webkit-overflow-scrolling:touch}
 .rs-body>.card{max-width:640px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
 body.noscroll{overflow:hidden}
+.rt-map .osm-dark{filter:invert(1) hue-rotate(180deg) brightness(.82) contrast(.92) saturate(.5)}

@@ -17,6 +17,18 @@
   const WDL = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
   const MON = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
   const ddmm = s => `${s.slice(8, 10)}/${s.slice(5, 7)}`;
+  // Campos de tempo: o teclado numérico do celular não tem ":", então os dois-pontos entram sozinhos (3000 vira 30:00, 15900 vira 1:59:00).
+  const TIME_INPUTS = new Set(['cPace', 'cGoal', 'gGoal', 'gCur', 'testTime', 'nGoal', 'rfGoal']);
+  document.addEventListener('input', e => {
+    const el = e.target;
+    if (!el || !TIME_INPUTS.has(el.id)) return;
+    if (!el.value) { delete el.dataset.typed; return; }
+    // Quem digita os dois-pontos (teclado completo) escreve do seu jeito.
+    if (e.data && /[:.,h]/.test(e.data)) el.dataset.typed = '1';
+    if (el.dataset.typed || /[.,h]/.test(el.value)) return;
+    const d = el.value.replace(/\D/g, '').slice(0, 6);
+    el.value = d.length <= 2 ? d : d.length <= 4 ? `${d.slice(0, -2)}:${d.slice(-2)}` : `${d.slice(0, -4)}:${d.slice(-4, -2)}:${d.slice(-2)}`;
+  }, true);
   // Contagem de uso no Vercel Web Analytics. Cada funcionalidade aparece como uma página /uso/... no painel.
   // Não envia nome, Strava nem dados dos treinos: só o nome da funcionalidade.
   function track(name) {
@@ -961,7 +973,8 @@
 
   /* ---------- Gerar plano ---------- */
   let generated = null;
-  const toSec = s => { const p = String(s || '').trim().split(':').map(Number); if (p.some(isNaN) || p.length < 2) return null; return p.length === 3 ? p[0] * 3600 + p[1] * 60 + p[2] : p[0] * 60 + p[1]; };
+  // Aceita 30:00, 1:59:00, 30.00 ou só 30 (minutos).
+  const toSec = s => { const t = String(s || '').trim().replace(/[.,h]/g, ':'); if (/^\d{1,3}$/.test(t)) return +t * 60 || null; const p = t.split(':').map(Number); if (p.some(isNaN) || p.length < 2 || p.length > 3) return null; return p.length === 3 ? p[0] * 3600 + p[1] * 60 + p[2] : p[0] * 60 + p[1]; };
   (function initGen() {
     const f = $('genForm'); if (!f) return;
     $('gStart').value = addDays(today, 1);

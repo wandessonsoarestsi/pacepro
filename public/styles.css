@@ -520,7 +520,8 @@ body.noscroll{overflow:hidden}
 /* Imagem do percurso */
 .istudio .is-stage{aspect-ratio:1080/1350;width:min(100%,360px,calc((100dvh - 330px) * 1080 / 1350));background:#F2F3F5;transition:aspect-ratio .2s}
 .istudio .is-stage canvas{object-fit:contain}
-.is-seg{display:grid;grid-template-columns:1fr 1fr;gap:4px;width:min(100%,340px);padding:4px;border-radius:14px;background:var(--sunk)}
+.is-seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:4px;width:min(100%,340px);padding:4px;border-radius:14px;background:var(--sunk)}
 .is-seg button{border:0;background:none;font:inherit;font-weight:700;font-size:14px;padding:9px 8px;border-radius:10px;color:var(--muted);cursor:pointer}
 .is-seg button[aria-pressed="true"]{background:var(--card);color:var(--fg);box-shadow:var(--shadow)}
 .rt-image{margin-top:8px}
+.istudio .is-stage.clear{background:repeating-conic-gradient(#5b6470 0 25%,#7b8490 0 50%) 0 0/24px 24px}

@@ -37,7 +37,7 @@
     planMd = md || null;
     plan = null;
     if (md) { try { const p = P.parse(md); if (p.days.length) { plan = p; planSource = source || 'salvo'; } } catch (e) {} }
-    if (plan) { plan.base = plan.days.map(d => ({ ...d })); plan.weeks.forEach(w => { w.dates = w.days.map(x => x.date); }); applyAdjust(); }
+    if (plan) { plan.gymOrig = { ...plan.gym }; plan.base = plan.days.map(d => ({ ...d })); plan.weeks.forEach(w => { w.dates = w.days.map(x => x.date); }); applyAdjust(); }
   }
 
   /* ---------- Ajustes do plano (treino remarcado, pulado ou aliviado) ---------- */
@@ -68,9 +68,70 @@
       }
       return applyTestPaces(d, d0);
     });
+    plan.days = applyActs(plan.days);
     const by = {}; plan.days.forEach(d => { by[d.date] = d; });
     plan.weeks.forEach(w => { w.days = w.dates.map(dt => by[dt]).filter(Boolean); });
   }
+  /* ---------- Atividades além da corrida no plano atual ---------- */
+  // extra.acts = { gym, cross: ['swim'|'bike'|'mobility'], other } muda os dias de hoje em diante, sem mexer nas corridas.
+  const ACT_KEYS = ['swim', 'bike', 'mobility'];
+  function planActs() {
+    if (extra.acts) return extra.acts;
+    const types = new Set(plan.base.map(d => d.type));
+    const otherDay = plan.base.find(d => d.type === 'cross');
+    return { gym: plan.base.some(d => d.gym), cross: ACT_KEYS.filter(k => types.has(k)), other: otherDay ? otherDay.title.split(/\s+leve|,/)[0] : '' };
+  }
+  let gymLib = null;
+  function applyActs(days) {
+    const a = extra.acts; if (!a) return days;
+    const G = window.PlanGenerator, T = (G && G.CROSS_TEXT) || {};
+    if (a.gym && !Object.keys(plan.gym).length && G && G.GYM_MD) { gymLib = gymLib || P.parse(G.GYM_MD).gym; plan.gym = { ...gymLib }; }
+    const list = (a.cross || []).filter(k => T[k]).map(k => ({ k, ...T[k] }));
+    if (a.other) list.push({ k: 'cross', ico: '🔸', leve: `${a.other} leve, 30 min`, moderada: `${a.other} leve a moderado, 30–45 min` });
+    const race = raceISO(), out = days.map(d => ({ ...d }));
+    const by = {}; out.forEach(d => { by[d.date] = d; });
+    plan.weeks.forEach((w, wi) => {
+      const ds = w.dates.map(dt => by[dt]).filter(d => d && d.date >= today && d.date < race && !d.movedTo && !d.skipped);
+      const near = d => (D(race) - D(d.date)) / 864e5 <= 3;
+      // Dias livres: os que já eram de outra atividade e, se faltar, dias de semana de descanso. Fim de semana fica livre.
+      const cross = ds.filter(d => isCross(d.type));
+      const restWk = ds.filter(d => d.type === 'rest' && !d.gymOnly && [1, 2, 3, 4, 5].includes(D(d.date).getDay()));
+      const slots = cross.concat(list.length ? restWk : []).filter(d => !near(d)).slice(0, Math.max(2, cross.length));
+      const light = /leve|teste|polimento|retomada|prova/i.test(w.title || '');
+      cross.filter(d => !slots.includes(d) || !list.length).forEach(d => Object.assign(d, { type: 'rest', title: 'Descanso', rua: 'Descanso', key: false }));
+      if (list.length) slots.forEach((d, i) => {
+        const c = list[(i + (list.length > slots.length ? wi * slots.length : 0)) % list.length];
+        const txt = near(d) || light ? c.leve : c.moderada;
+        Object.assign(d, { type: c.k, title: txt.charAt(0).toUpperCase() + txt.slice(1), rua: `${c.ico} ${txt}`, esteira: '', targetPace: null, key: false });
+      });
+      // Musculação: tira, ou põe de segunda a sexta (A no intervalado, C no limiar, B/D/E nos outros).
+      const weekdays = ds.filter(d => [1, 2, 3, 4, 5].includes(D(d.date).getDay()));
+      if (!a.gym) ds.forEach(d => { d.gym = null; d.gymText = ''; });
+      else if (!weekdays.some(d => d.gym)) {
+        const others = ['B', 'D', 'E']; let oi = 0;
+        weekdays.forEach(d => { if (near(d)) return; const L = d.type === 'interval' ? 'A' : d.type === 'threshold' ? 'C' : others[oi++] || 'E'; d.gym = L; d.gymText = L; });
+      }
+    });
+    return out;
+  }
+  function renderActs() {
+    const box = $('actsCard'); if (!box) return;
+    if (!plan) { box.hidden = true; return; }
+    const a = planActs();
+    const ck = (id, on, label, k) => `<label for="${id}"><input id="${id}" type="checkbox"${k ? ` data-act="${k}"` : ''}${on ? ' checked' : ''}> ${label}</label>`;
+    box.hidden = false;
+    box.innerHTML = `<details class="acts"${extra.acts ? ' open' : ''}><summary><span><b>Atividades além da corrida</b><small class="muted">${esc([a.gym ? 'Musculação' : '', ...a.cross.map(k => TYPE_LABEL[k]), a.other].filter(Boolean).join(', ') || 'Só corrida')}</small></span></summary>` +
+      `<div class="checks">${ck('aGym', a.gym, 'Musculação')}${ck('aSwim', a.cross.includes('swim'), 'Natação', 'swim')}${ck('aBike', a.cross.includes('bike'), 'Bike', 'bike')}${ck('aMob', a.cross.includes('mobility'), 'Mobilidade', 'mobility')}</div>` +
+      `<input id="aOther" type="text" maxlength="40" placeholder="Outra: funcional, pilates, remo…" value="${esc(a.other || '')}" aria-label="Outra atividade">` +
+      `<small class="muted">Vale de hoje em diante. As corridas não mudam: as outras atividades vão para os dias sem corrida e a musculação de segunda a sexta.</small>` +
+      `<div class="row-actions"><button class="btn" id="aSave" type="button">Aplicar ao plano</button>${extra.acts ? '<button class="btn ghost" id="aReset" type="button">Voltar ao original</button>' : ''}</div></details>`;
+    $('aSave').onclick = () => {
+      extra.acts = { gym: $('aGym').checked, cross: [...box.querySelectorAll('[data-act]:checked')].map(b => b.dataset.act), other: $('aOther').value.trim() };
+      refreshAdjust(); showToast('Plano atualizado.');
+    };
+    const r = $('aReset'); if (r) r.onclick = () => { extra.acts = null; plan.gym = plan.gymOrig || plan.gym; refreshAdjust(); showToast('Atividades do plano original.'); };
+  }
+
   function refreshAdjust() { applyAdjust(); persist(); renderAll(); }
   function setPlanMd(md, source) {
     applyPlanMd(md, source);
@@ -450,6 +511,7 @@
   }
   function renderPlan() {
     renderPrePlan();
+    renderActs();
     const d = dayOf(selected), cur = dayOf(today);
     if (planWeek == null) planWeek = d ? d.week : plan.weeks[0].n;
     const counted = x => isRunType(x.type);

@@ -1385,7 +1385,7 @@
   const nearDist = d => ['5', '10', '21.1', '42.2'].reduce((b, x) => Math.abs(+x - d) < Math.abs(+b - d) ? x : b, '5');
   function allRaces() {
     const list = (extra.races || []).map(r => ({ ...r }));
-    if (plan && plan.race && !list.some(r => r.date === plan.race)) list.push({ id: 'plan', name: 'Prova do plano atual', date: plan.race, dist: distKm(), goal: A.fmtTime(goalSec()), status: 'inscrito', plan: true });
+    if (plan && plan.race && extra.hidePlanRace !== plan.race && !list.some(r => r.date === plan.race)) list.push({ id: 'plan', name: 'Prova do plano atual', date: plan.race, dist: distKm(), goal: A.fmtTime(goalSec()), status: 'inscrito', plan: true });
     list.forEach(r => { if (plan && r.date === plan.race) r.plan = true; });
     return list.sort((a, b) => a.date.localeCompare(b.date));
   }
@@ -1417,14 +1417,14 @@
     const sub = [kmTxt(r.dist), r.goal ? `meta ${r.goal}` : '', r.place].filter(Boolean).map(esc).join(' · ');
     const chip = res ? `<span class="chip ${r.goal && toSec(r.goal) && res <= toSec(r.goal) ? 'good' : ''}">${A.fmtTime(res)}</span>` : past ? '<span class="chip">sem resultado</span>' : `<span class="chip ${r.plan ? 'key' : r.status === 'inscrito' ? 'good' : ''}">${r.plan ? 'no plano' : r.status === 'inscrito' ? 'inscrito' : 'pretendo'}</span>`;
     const open = raceOpen === r.id;
-    return `<div class="rrow${past ? ' past' : ''}"><button class="rr-main" type="button" data-rid="${esc(r.id)}" aria-expanded="${open}"><span class="dtile"><b>${dd.getDate()}</b><small>${WD[dd.getDay()]}</small></span><span class="rr-txt"><span class="t">${esc(r.name)}</span><span class="s">${sub}</span>${when ? `<span class="s when">${when}</span>` : ''}</span>${chip}</button>` +
-      (open ? `<div class="rr-act">${!past && !r.plan ? `<button class="btn sm" type="button" data-rplan="${esc(r.id)}">Montar plano para esta prova</button>` : ''}${!past ? `<button class="btn ghost sm" type="button" data-rics="${esc(r.id)}">Adicionar à agenda</button>` : ''}${r.id !== 'plan' ? `<button class="btn ghost sm" type="button" data-redit="${esc(r.id)}">Editar</button><button class="btn ghost sm danger" type="button" data-rdel="${esc(r.id)}">Excluir</button>` : `<span class="muted small">Vem do plano. Para trocar, gere um plano novo.</span>`}</div>` : '') + `</div>`;
+    return `<div class="rrow${past ? ' past' : ''}"><button class="rr-main" type="button" data-rid="${esc(r.id)}" aria-expanded="${open}"><span class="dtile"><b>${dd.getDate()}</b><small>${WD[dd.getDay()]}</small></span><span class="rr-txt"><span class="t">${esc(r.name)}</span><span class="s">${sub}</span>${when ? `<span class="s when">${when}</span>` : ''}</span><span class="rr-end">${chip}<span class="chev" aria-hidden="true">${open ? '▴' : '▾'}</span></span></button>` +
+      (open ? `<div class="rr-act">${!past && !r.plan ? `<button class="btn sm" type="button" data-rplan="${esc(r.id)}">Montar plano para esta prova</button>` : ''}${!past ? `<button class="btn ghost sm" type="button" data-rics="${esc(r.id)}">Adicionar à agenda</button>` : ''}<button class="btn ghost sm" type="button" data-redit="${esc(r.id)}">Editar</button><button class="btn ghost sm danger" type="button" data-rdel="${esc(r.id)}">${r.id === 'plan' ? 'Tirar do calendário' : 'Excluir'}</button></div>` : '') + `</div>`;
   }
   function renderRaces() {
     const box = $('racesCard'); if (!box) return;
     const list = allRaces(), up = list.filter(r => r.date >= today), past = list.filter(r => r.date < today).reverse();
     let html = `<div class="card-head"><div><span class="eyebrow">Calendário</span><h2>Próximas provas</h2></div><button class="btn sm" id="raceAdd" type="button">+ Prova</button></div>`;
-    if (!up.length) html += `<p class="muted small">Nenhuma prova marcada. Toque em "+ Prova" para adicionar as próximas.</p>`;
+    html += up.length ? `<p class="muted small">Toque numa prova para editar, excluir, montar o plano ou pôr na agenda.</p>` : `<p class="muted small">Nenhuma prova marcada. Toque em "+ Prova" para adicionar as próximas.</p>`;
     let mk = '';
     up.forEach(r => { const k = r.date.slice(0, 7); if (k !== mk) { mk = k; html += `<div class="rmonth">${MONL[+k.slice(5) - 1]} de ${k.slice(0, 4)}</div>`; } html += raceRow(r); });
     if (past.length) html += `<details class="rpast"><summary>Provas feitas (${past.length})</summary>${past.map(raceRow).join('')}</details>`;
@@ -1435,15 +1435,15 @@
     box.querySelectorAll('[data-rics]').forEach(b => b.onclick = () => icsFor(find(b.dataset.rics)));
     box.querySelectorAll('[data-redit]').forEach(b => b.onclick = () => { raceEdit = b.dataset.redit; renderRaceForm(true); });
     box.querySelectorAll('[data-rdel]').forEach(b => b.onclick = () => {
-      if (b.dataset.armed) { extra.races = (extra.races || []).filter(r => r.id !== b.dataset.rdel); raceOpen = null; persist(); renderAll(); return; }
-      b.dataset.armed = '1'; b.textContent = 'Toque de novo para excluir';
+      if (b.dataset.armed) { if (b.dataset.rdel === 'plan') extra.hidePlanRace = plan.race; else extra.races = (extra.races || []).filter(r => r.id !== b.dataset.rdel); raceOpen = null; persist(); renderAll(); showToast('Prova removida do calendário.'); return; }
+      b.dataset.armed = '1'; b.textContent = 'Toque de novo para confirmar';
     });
     $('raceAdd').onclick = () => { raceEdit = null; renderRaceForm(true); };
   }
   function renderRaceForm(open) {
     const box = $('raceFormCard'); if (!box) return;
     if (!open) { box.hidden = true; return; }
-    const r = (extra.races || []).find(x => x.id === raceEdit) || { name: '', date: '', dist: 5, goal: '', place: '', status: 'inscrito' };
+    const r = (raceEdit === 'plan' ? allRaces().find(x => x.id === 'plan') : (extra.races || []).find(x => x.id === raceEdit)) || { name: '', date: '', dist: 5, goal: '', place: '', status: 'inscrito' };
     box.hidden = false;
     box.innerHTML = `<div class="card-head"><h2>${raceEdit ? 'Editar prova' : 'Nova prova'}</h2></div><form class="form" id="raceForm" novalidate>` +
       `<label for="rfName" class="full">Nome<input id="rfName" type="text" value="${esc(r.name)}" placeholder="ex.: Corrida da Ponte"></label>` +
@@ -1463,7 +1463,8 @@
       if (!date) return bad('Escolha a data da prova.');
       if (!(dist > 0 && dist <= 100)) return bad('Escreva a distância em km, como 5, 10 ou 21,1.');
       if (goal && !toSec(goal)) return bad('Escreva a meta como 55:00 ou 1:59:00.');
-      const item = { id: raceEdit || 'r' + Date.now().toString(36), name, date, dist, goal, place: $('rfPlace').value.trim(), status: $('rfStatus').value };
+      const item = { id: raceEdit && raceEdit !== 'plan' ? raceEdit : 'r' + Date.now().toString(36), name, date, dist, goal, place: $('rfPlace').value.trim(), status: $('rfStatus').value };
+      if (raceEdit === 'plan' && plan && date !== plan.race) extra.hidePlanRace = plan.race;
       extra.races = (extra.races || []).filter(x => x.id !== item.id).concat(item);
       raceEdit = null; raceOpen = item.id; persist(); renderRaceForm(false); renderAll(); showToast('Prova salva.');
     };

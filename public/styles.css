@@ -295,7 +295,7 @@ details.race .checks2{margin-top:10px}
 details.race .checks2>div{background:var(--card)}
 #fRpe{display:grid;grid-template-columns:repeat(5,1fr)}
 
-.sm{display:flex;flex-direction:column;gap:6px;min-width:0}
+.summary>.sm{display:flex;flex-direction:column;gap:6px;min-width:0}
 .smh{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
 .smh .lbl{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
 .smh b{font-size:20px;font-weight:800;font-variant-numeric:tabular-nums}

@@ -482,11 +482,168 @@
     const bars = a.splits.length >= 2 ? `<div class="bars" aria-label="Ritmo por km">${a.splits.map(s => `<i title="${A.fmtPace(s.pace)}/km" style="height:${(30 + 70 * (maxP - s.pace) / Math.max(1, maxP - minP)).toFixed(0)}%"></i>`).join('')}</div><p class="muted small">Ritmo por km (barra mais alta = mais rápido): ${a.splits.map(s => A.fmtPace(s.pace)).join(' · ')}</p>` : '';
     box.innerHTML = `<div class="card-head"><div><span class="eyebrow">Análise do treino</span><h3>${esc(a.headline)}</h3></div><span class="chip ${tone}">${label}</span></div>` +
       `<div class="metrics"><div class="metric"><span>Distância</span><b>${m.distKm.toFixed(2).replace('.', ',')}</b></div><div class="metric"><span>Tempo</span><b>${A.fmtTime(m.time)}</b></div><div class="metric"><span>Ritmo</span><b>${m.pace ? A.fmtPace(m.pace) : '–'}</b></div><div class="metric"><span>FC</span><b>${m.hr || '–'}</b></div></div>` +
-      bars + (() => { const Z = hrZones(); const zb = Z ? zoneBar(zoneTimes(a.splits, Z)) : ''; return zb ? `<div><span class="eyebrow">Tempo por zona de FC</span>${zb}</div>` : ''; })() + `<ul class="points">${a.points.map(p => `<li class="${p.tone}">${esc(p.txt)}</li>`).join('')}</ul>` + compareHtml(day.date) +
+      (st.activityId ? '<div id="rmapSlot"></div>' : '') + bars + (() => { const Z = hrZones(); const zb = Z ? zoneBar(zoneTimes(a.splits, Z)) : ''; return zb ? `<div><span class="eyebrow">Tempo por zona de FC</span>${zb}</div>` : ''; })() + `<ul class="points">${a.points.map(p => `<li class="${p.tone}">${esc(p.txt)}</li>`).join('')}</ul>` + compareHtml(day.date) +
       (a.estimateSec ? `<p class="msg good">Este treino indica ${A.fmtTime(a.estimateSec)} nos ${distKm()} km (${esc(a.estimateBasis)}). A estimativa foi atualizada.</p>` : '') +
       `<div class="row-actions between"><button class="btn ghost sm" id="shareW" type="button">Compartilhar</button>${st.activityId ? `<a class="muted small" href="https://www.strava.com/activities/${encodeURIComponent(st.activityId)}" target="_blank" rel="noopener">Ver no Strava ↗</a>` : ''}</div>`;
     box.hidden = false;
     $('shareW').onclick = () => shareWorkout(day);
+    if (st.activityId) mountRouteMap('card', $('rmapSlot'), st.activityId, day);
+  }
+
+  /* ---------- Mapa da corrida ---------- */
+  const RI = window.RouteInsights;
+  let leafletP = null;
+  function loadLeaflet() {
+    if (window.L) return Promise.resolve(window.L);
+    if (!leafletP) leafletP = new Promise((ok, no) => {
+      const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = '/vendor/leaflet/leaflet.css'; document.head.appendChild(l);
+      const sc = document.createElement('script'); sc.src = '/vendor/leaflet/leaflet.js'; sc.onload = () => ok(window.L); sc.onerror = () => { leafletP = null; no(new Error('mapa indisponível')); }; document.head.appendChild(sc);
+    });
+    return leafletP;
+  }
+  const streamMem = {};
+  async function getStreams(id) {
+    id = String(id);
+    if (streamMem[id]) return streamMem[id];
+    const all = store.get('pp.streams', {});
+    if (all[id]) return (streamMem[id] = all[id]);
+    const s = await api(`/api/strava/streams?id=${encodeURIComponent(id)}`);
+    streamMem[id] = s;
+    try { const keep = Object.keys(all).slice(-5); const next = {}; keep.forEach(k => next[k] = all[k]); next[id] = s; store.set('pp.streams', next); } catch (e) {}
+    return s;
+  }
+  // Corrida anterior no mesmo percurso (pelas miniaturas do Strava).
+  function ghostCandidate(id) {
+    const cur = runs.find(r => String(r.stravaId) === String(id));
+    if (!cur || !cur.poly || cur.trainer) return null;
+    let A; try { A = decodePoly(cur.poly); } catch (e) { return null; }
+    const prev = runs.filter(r => r.poly && !r.trainer && r.stravaId !== cur.stravaId && (r.date < cur.date || (r.date === cur.date && r.stravaId < cur.stravaId))).sort((a, b) => b.date.localeCompare(a.date));
+    for (const r of prev.slice(0, 40)) { try { if (RI.sameRoute(A, decodePoly(r.poly))) return r; } catch (e) {} }
+    return null;
+  }
+  const cssVar = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  const isDarkUI = () => { const c = getComputedStyle(document.body).backgroundColor.match(/\d+/g) || [255, 255, 255]; return (+c[0] + +c[1] + +c[2]) / 3 < 110; };
+  const RM = {};
+  // Monta o mapa no lugar de "slot". key separa o mapa do card de análise do mapa da tela da corrida.
+  async function mountRouteMap(key, slot, id, day) {
+    if (!slot || !RI) return;
+    id = String(id); day = day || {};
+    let rm = RM[key] || {};
+    if (rm.id === id && rm.node) { if (rm.node !== slot) slot.replaceWith(rm.node); if (rm.map) setTimeout(() => rm.map.invalidateSize(), 0); return; }
+    if (rm.map) { try { rm.map.remove(); } catch (e) {} }
+    const node = document.createElement('div'); node.className = 'rmap'; if (slot.id) node.id = slot.id;
+    node.innerHTML = '<p class="muted small">Carregando o mapa da corrida…</p>';
+    slot.replaceWith(node);
+    rm = RM[key] = { id, node, map: null };
+    const alive = () => RM[key] === rm;
+    try {
+      const s = await getStreams(id);
+      if (!alive()) return;
+      if (!s || !s.n) { node.innerHTML = key === 'sheet' ? '<p class="muted small">Esta corrida não tem GPS (esteira ou relógio sem localização), então não há mapa.</p>' : ''; if (key !== 'sheet') node.remove(); rm.node = null; return; }
+      const g = ghostCandidate(id);
+      let prev = null; if (g) { try { prev = await getStreams(g.stravaId); } catch (e) {} }
+      const ins = RI.analyze(s, { type: day.type, rua: day.rua, target: day.targetPace, prev });
+      const L = await loadLeaflet();
+      if (!alive()) return;
+      drawRouteMap(L, node, s, ins, g, rm);
+    } catch (e) {
+      if (!alive()) return;
+      node.innerHTML = `<p class="muted small">Não consegui carregar o mapa agora${e.status === 401 ? ' (conecte o Strava de novo em Ajustes)' : ''}.</p>`;
+      rm.node = null;
+    }
+  }
+  /* Tela de uma corrida: abre ao tocar numa corrida em Início ou Progresso. */
+  function openRunSheet(sid) {
+    const r = runs.find(x => String(x.stravaId) === String(sid)); if (!r) return;
+    const sh = $('runSheet'), pd = plan && dayAt(r.date), inPlan = pd && isRunType(pd.type);
+    const st = done[r.date], a = st && st.analysis && String(st.activityId) === String(sid) ? st.analysis : null;
+    const chip = a ? `<span class="chip ${a.status === 'ok' ? 'good' : a.status}">${a.status === 'ok' ? 'No alvo' : a.status === 'warn' ? 'Atenção' : 'Abaixo'}</span>` : '';
+    const dt = D(r.date);
+    sh.querySelector('.rs-body').innerHTML = `<div class="card"><div class="card-head"><div><span class="eyebrow">${WDL[dt.getDay()]}, ${dt.getDate()} de ${MON[dt.getMonth()]}${r.trainer ? ' · esteira' : ''}</span><h3>${esc(inPlan ? pd.title : r.name)}</h3>${inPlan && pd.title !== r.name ? `<small class="muted">${esc(r.name)}</small>` : ''}</div>${chip}</div>` +
+      `<div class="metrics"><div class="metric"><span>Distância</span><b>${r.km.toFixed(2).replace('.', ',')}</b></div><div class="metric"><span>Tempo</span><b>${A.fmtTime(r.sec)}</b></div><div class="metric"><span>Ritmo</span><b>${A.fmtPace(r.sec / r.km)}</b></div><div class="metric"><span>FC</span><b>${r.hr || '–'}</b></div></div>` +
+      `<div id="rsMap"></div>` +
+      `<div class="row-actions between">${inPlan && r.date >= minDay() && r.date <= lastDay() ? '<button class="btn ghost sm" id="rsDay" type="button">Ver o treino do dia</button>' : '<span></span>'}<a class="muted small" href="https://www.strava.com/activities/${encodeURIComponent(sid)}" target="_blank" rel="noopener">Ver no Strava ↗</a></div></div>`;
+    if (sh.hidden) { sh.hidden = false; document.body.classList.add('noscroll'); try { history.pushState({ runSheet: 1 }, ''); } catch (e) {} }
+    sh.querySelector('.rs-body').scrollTop = 0;
+    const b = $('rsDay'); if (b) b.onclick = () => { closeRunSheet(); selected = r.date; location.hash = 'hoje'; renderAll(); setTimeout(() => { const w = $('analysis').hidden ? $('workout') : $('analysis'); w.scrollIntoView({ block: 'start', behavior: 'smooth' }); }, 80); };
+    mountRouteMap('sheet', $('rsMap'), sid, inPlan ? pd : { type: 'easy' });
+  }
+  function closeRunSheet(fromPop) {
+    const sh = $('runSheet'); if (sh.hidden) return;
+    sh.hidden = true; document.body.classList.remove('noscroll');
+    if (!fromPop && history.state && history.state.runSheet) history.back();
+  }
+  window.addEventListener('popstate', () => closeRunSheet(true));
+  $('rsBack').onclick = () => closeRunSheet();
+  function drawRouteMap(L, node, s, ins, g, rm) {
+    const Z = hrZones(), hasHr = !!(s.hr && Z);
+    const modes = [hasHr && ['effort', 'Esforço'], ['pace', 'Ritmo'], ins.ghost && ['ghost', 'Fantasma']].filter(Boolean);
+    let mode = ins.ghost && store.get('pp.rmode', '') === 'ghost' ? 'ghost' : modes[0][0];
+    const pts = s.lat.map((la, i) => [la, s.lon[i]]);
+    const moments = [];
+    const at = i => pts[Math.max(0, Math.min(s.n - 1, i))];
+    if (ins.fastestKm) moments.push({ ico: 'K', cls: 'k', i: ins.fastestKm.i0, i1: ins.fastestKm.i1, t: 'Km mais rápido', d: `km ${ins.fastestKm.k} em ${RI.fmtPace(ins.fastestKm.sec)}` });
+    if (ins.peak) moments.push({ ico: '⚡', cls: 'v', i: ins.peak.i, t: 'Pico de velocidade', d: `${RI.fmtPace(ins.peak.pace)}/km (${(ins.peak.v * 3.6).toFixed(1).replace('.', ',')} km/h) no km ${RI.kmTxt(s.d[ins.peak.i])}` });
+    if (ins.maxHr) moments.push({ ico: '♥', cls: 'h', i: ins.maxHr.i, t: 'FC mais alta', d: `${ins.maxHr.hr} bpm no km ${RI.kmTxt(s.d[ins.maxHr.i])}` });
+    if (ins.climb) moments.push({ ico: '▲', cls: 'c', i: ins.climb.i0, i1: ins.climb.i1, t: 'Maior subida', d: `+${Math.round(ins.climb.gain)} m em ${Math.round(ins.climb.dist)} m (${Math.round(ins.climb.grade * 100)}%) a partir do km ${RI.kmTxt(s.d[ins.climb.i0])}` });
+    if (ins.fatigue) moments.push({ ico: '!', cls: 'f', i: ins.fatigue.i, t: `Aqui você cansou (km ${RI.kmTxt(ins.fatigue.dist)})`, d: ins.fatigue.tip });
+    if (ins.ghost && ins.ghost.bestI != null && ins.ghost.bestLead > 0) moments.push({ ico: '👻', cls: 'g', i: ins.ghost.bestI, t: 'Maior vantagem sobre o fantasma', d: `${ins.ghost.bestLead} s à frente de ${ddmm(g.date)} no km ${RI.kmTxt(s.d[ins.ghost.bestI])}` });
+    const repRows = ins.reps.map(r => ({ ico: String(r.n), cls: 'r ' + r.tone, i: r.i0, i1: r.i1, t: `Tiro ${r.n} · ${Math.round(r.dist / 10) * 10} m`, d: `${RI.fmtPace(r.pace)}/km${r.target ? ` (alvo ${RI.fmtPace(r.target)})` : ''}${r.hr ? ` · FC ${Math.round(r.hr)}` : ''}`, tone: r.tone }));
+    const gh = ins.ghost;
+    const ghostHtml = gh ? `<div class="rt-ghost"><b>${gh.final < 0 ? `${-gh.final} s mais rápido` : gh.final > 0 ? `${gh.final} s mais lento` : 'Mesmo tempo'}</b> que em ${ddmm(g.date)} no mesmo percurso` +
+      (gh.perKm.length ? `<div class="rt-kms">${gh.perKm.map(k => `<span class="${k.diff < 0 ? 'good' : k.diff > 0 ? 'bad' : ''}">km ${k.k} ${k.diff > 0 ? '+' : k.diff < 0 ? '−' : '±'}${Math.abs(k.diff)}s</span>`).join('')}</div>` : '') + '</div>' : '';
+    node.innerHTML = `<div class="rt-head"><span class="eyebrow">Mapa da corrida</span>${modes.length > 1 ? `<div class="rt-modes" role="group" aria-label="Cor do percurso">${modes.map(([k, t]) => `<button type="button" data-m="${k}" aria-pressed="${k === mode}">${t}</button>`).join('')}</div>` : ''}</div>` +
+      `<div class="rt-map"></div><div class="rt-legend"></div>` + ghostHtml +
+      `<div class="rt-list">${moments.map((m, k) => `<button type="button" class="rt-row" data-k="${k}"><span class="rt-pin ${m.cls}">${m.ico}</span><span><b>${esc(m.t)}</b><small>${esc(m.d)}</small></span></button>`).join('')}</div>` +
+      (repRows.length ? `<div class="rt-reps"><span class="eyebrow">Tiros no mapa</span><div class="rt-rgrid">${repRows.map((m, k) => `<button type="button" class="rt-row rt-rep" data-k="${moments.length + k}" aria-label="${esc(m.t + ': ' + m.d)}"><span class="rt-pin ${m.cls}">${m.ico}</span><b>${RI.fmtPace(ins.reps[k].pace)}</b></button>`).join('')}</div>${ins.reps.some(r => r.target) ? `<small class="muted">Verde no alvo, laranja perto, vermelho abaixo. Alvo ${RI.fmtPace(ins.reps.find(r => r.target).target)}/km.</small>` : ''}</div>` : '');
+    const el = node.querySelector('.rt-map');
+    const map = L.map(el, { zoomControl: false, attributionControl: true, scrollWheelZoom: false, dragging: !L.Browser.mobile, tap: false, zoomSnap: 0.25 });
+    rm.map = map; map.attributionControl.setPrefix(false);
+    L.tileLayer(`https://{s}.basemaps.cartocdn.com/${isDarkUI() ? 'dark_all' : 'rastertiles/voyager'}/{z}/{x}/{y}{r}.png`, { maxZoom: 19, subdomains: 'abcd', attribution: '© OpenStreetMap · © CARTO' }).addTo(map);
+    const bounds = L.latLngBounds(pts); map.fitBounds(bounds, { padding: [18, 18] });
+    L.polyline(pts, { color: isDarkUI() ? '#000' : '#fff', weight: 8, opacity: .55, interactive: false }).addTo(map);
+    let colorLayer = null;
+    const ZC = ['--z1', '--c3', '--good', '--c2', '--bad'].map(cssVar);
+    const sp30 = RI.rolling(s, ins.sp, 30);
+    function colors() {
+      if (mode === 'effort') return s.hr.map(h => (h ? ZC[zoneOf(h, Z)] : ZC[0]));
+      if (mode === 'ghost') {
+        const dl = gh.delta, w = Math.max(2, Math.round(s.n / 60));
+        return dl.map((x, i) => { const a = dl[Math.max(0, i - w)], b = dl[Math.min(s.n - 1, i + w)]; if (x == null || a == null || b == null) return ZC[0]; const r = (b - a); return r < -1 ? ZC[2] : r > 1 ? ZC[4] : ZC[0]; });
+      }
+      const v = sp30.filter(x => x).sort((a, b) => a - b), q = f => v[Math.floor(f * (v.length - 1))];
+      const cuts = [q(.2), q(.4), q(.6), q(.8)], pal = [ZC[1], cssVar('--c1'), ZC[2], ZC[3], ZC[4]];
+      return sp30.map(x => pal[x == null ? 0 : cuts.filter(c => x > c).length]);
+    }
+    function paint() {
+      if (colorLayer) colorLayer.remove();
+      colorLayer = L.layerGroup().addTo(map);
+      const col = colors(); let start = 0;
+      for (let i = 1; i <= s.n; i++) if (i === s.n || col[i] !== col[start]) { L.polyline(pts.slice(start, Math.min(i + 1, s.n)), { color: col[start], weight: 4.5, opacity: 1, lineCap: 'round', interactive: false }).addTo(colorLayer); start = i; }
+      const lg = node.querySelector('.rt-legend');
+      lg.innerHTML = mode === 'effort' ? Z.z.map((z, k) => `<span><i style="background:${ZC[k]}"></i>Z${k + 1}</span>`).join('') + '<small>zonas de FC</small>'
+        : mode === 'ghost' ? `<span><i style="background:${ZC[2]}"></i>ganhando tempo</span><span><i style="background:${ZC[4]}"></i>perdendo tempo</span><small>contra ${ddmm(g.date)}</small>`
+        : `<small>mais lento</small><span class="grad" style="background:linear-gradient(90deg,${ZC[1]},${cssVar('--c1')},${ZC[2]},${ZC[3]},${ZC[4]})"></span><small>mais rápido</small>`;
+      node.querySelectorAll('.rt-modes button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.m === mode)));
+    }
+    paint();
+    const dot = (p, c) => L.circleMarker(p, { radius: 5, color: '#fff', weight: 2, fillColor: c, fillOpacity: 1, interactive: false }).addTo(map);
+    dot(pts[0], ZC[2]); dot(pts[s.n - 1], ZC[4]);
+    const all = moments.concat(repRows);
+    const marks = all.map(m => {
+      const p = m.i1 != null ? at(Math.round((m.i + m.i1) / 2)) : at(m.i);
+      return L.marker(p, { icon: L.divIcon({ className: '', html: `<span class="rt-pin ${m.cls}">${m.ico}</span>`, iconSize: [26, 26], iconAnchor: [13, 13] }), keyboard: false })
+        .bindPopup(`<b>${esc(m.t)}</b><br>${esc(m.d)}`, { closeButton: false, autoPanPadding: [20, 20] }).addTo(map);
+    });
+    let hl = null;
+    node.querySelectorAll('.rt-row').forEach(b => b.onclick = () => {
+      const m = all[+b.dataset.k], mk = marks[+b.dataset.k];
+      if (hl) hl.remove(); hl = null;
+      if (m.i1 != null) { const seg = pts.slice(m.i, m.i1 + 1); hl = L.polyline(seg, { color: '#fff', weight: 9, opacity: .5, interactive: false }).addTo(map); map.fitBounds(L.latLngBounds(seg), { padding: [40, 40], maxZoom: 17 }); }
+      else map.setView(mk.getLatLng(), Math.max(map.getZoom(), 16));
+      mk.openPopup(); el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    });
+    node.querySelectorAll('.rt-modes button').forEach(b => b.onclick = () => { mode = b.dataset.m; store.set('pp.rmode', mode); paint(); });
   }
 
   /* ---------- Plano ---------- */
@@ -549,7 +706,8 @@
     $('moreRuns').hidden = list.length <= 6;
     $('moreRuns').textContent = showAllRuns ? 'Mostrar menos' : `Ver todas (${list.length})`;
     $('chartTitle').textContent = `Tempo estimado nos ${String(distKm()).replace('.', ',')} km`;
-    $('runs').innerHTML = shown.map(r => `<div class="lrow" style="cursor:default"><span class="ico run">${ICON.run}</span><span style="min-width:0"><span class="t">${esc(r.name)}</span><span class="s">${ddmm(r.date)} · ${r.km.toFixed(2).replace('.', ',')} km · ${A.fmtTime(r.sec)}${r.hr ? ` · FC ${r.hr}` : ''}</span></span><span class="v">${A.fmtPace(r.sec / r.km)}<small>/km</small></span></div>`).join('') || '<p class="muted">Nenhuma corrida ainda.</p>';
+    $('runs').innerHTML = shown.map(r => `<${r.stravaId ? `button type="button" data-sid="${esc(r.stravaId)}"` : 'div style="cursor:default"'} class="lrow"><span class="ico run">${ICON.run}</span><span style="min-width:0"><span class="t">${esc(r.name)}</span><span class="s">${ddmm(r.date)} · ${r.km.toFixed(2).replace('.', ',')} km · ${A.fmtTime(r.sec)}${r.hr ? ` · FC ${r.hr}` : ''}</span></span><span class="v">${A.fmtPace(r.sec / r.km)}<small>/km</small></span></${r.stravaId ? 'button' : 'div'}>`).join('') || '<p class="muted">Nenhuma corrida ainda.</p>';
+    $('runs').querySelectorAll('[data-sid]').forEach(b => b.onclick = () => openRunSheet(b.dataset.sid));
 
     const dates = [...new Set(rs.map(r => r.date).concat(analyses().map(a => a.date)))].sort().filter(x => x <= today);
     const pts = dates.map(d => ({ d, v: (estimateAt(d) || {}).sec })).filter(p => p.v);
@@ -1430,7 +1588,7 @@
   // Versão = impressão digital dos arquivos do site. Muda a cada publicação, sem depender de configuração na Vercel.
   async function fetchVer() {
     try {
-      const txt = await Promise.all(['/index.html', '/app.js', '/styles.css', '/analysis.js', '/plan-generator.js', '/plan-parser.js'].map(u => fetch(u, { cache: 'no-store' }).then(r => { if (!r.ok) throw new Error(); return r.text(); })));
+      const txt = await Promise.all(['/index.html', '/app.js', '/styles.css', '/analysis.js', '/plan-generator.js', '/plan-parser.js', '/route-map.js'].map(u => fetch(u, { cache: 'no-store' }).then(r => { if (!r.ok) throw new Error(); return r.text(); })));
       let h = 5381; const s = txt.join('\n');
       for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
       return (h >>> 0).toString(36).padStart(7, '0').slice(-7);
@@ -1619,11 +1777,7 @@
         `<span class="rc-m"><span><b>${r.km.toFixed(2).replace('.', ',')}</b> km</span><span><b>${A.fmtTime(r.sec)}</b></span><span><b>${A.fmtPace(r.sec / r.km)}</b>/km</span>${r.hr ? `<span><b>${r.hr}</b> bpm</span>` : ''}</span></span></button>`;
     }).join('') + `</div>`;
     bindGoto(box);
-    box.querySelectorAll('.rc').forEach(b => b.onclick = () => {
-      const dt = b.dataset.rdate;
-      if (plan && dt >= minDay() && dt <= lastDay()) { selected = dt; renderAll(); setTimeout(() => { const w = $('analysis').hidden ? $('workout') : $('analysis'); w.scrollIntoView({ block: 'start', behavior: 'smooth' }); }, 60); }
-      else if (b.dataset.sid) window.open(`https://www.strava.com/activities/${encodeURIComponent(b.dataset.sid)}`, '_blank', 'noopener');
-    });
+    box.querySelectorAll('.rc').forEach(b => b.onclick = () => openRunSheet(b.dataset.sid));
   }
 
   /* ---------- Rotas ---------- */

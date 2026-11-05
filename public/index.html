@@ -168,6 +168,11 @@
           <label class="act" for="mdFile"><svg viewBox="0 0 24 24"><path d="M12 15V4M7 9l5-5 5 5M5 20h14"/></svg><span>Importar .md</span></label>
           <button class="act" id="planReset" type="button"><svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.3-5.6L4 8.7M4 4v4.7h4.7"/></svg><span>Exemplo</span></button>
         </div>
+        <div class="row-actions" id="planDelRow" hidden><button class="btn danger sm" id="planDel" type="button">Apagar plano</button></div>
+        <div class="msg bad" id="planDelAsk" hidden>
+          <p style="margin:0 0 10px"><b>Tem certeza que quer apagar o plano?</b> Os treinos do plano e os ajustes feitos nele somem deste aparelho. Suas corridas do Strava e o histórico de treinos continuam.</p>
+          <div class="row-actions"><button class="btn sm" id="planDelYes" type="button" style="background:var(--bad);color:#fff">Sim, apagar</button><button class="btn ghost sm" id="planDelNo" type="button">Cancelar</button></div>
+        </div>
         <input id="mdFile" type="file" accept=".md,.markdown,text/markdown,text/plain" hidden>
         <p class="msg" id="planMsg" hidden></p>
         <div class="gen" id="genBox" hidden>

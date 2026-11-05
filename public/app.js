@@ -1587,9 +1587,10 @@
     }
     return pts;
   }
-  function routeSvg(poly, size) {
+  function routeSvg(poly, size, indoor) {
     size = size || 64;
     let pts; try { pts = poly ? decodePoly(poly) : []; } catch (e) { pts = []; }
+    if (pts.length < 2 && !indoor) return `<svg class="route none" viewBox="0 0 64 64" aria-hidden="true"><circle cx="33" cy="14" r="4.6"/><path d="M20 30l6-7h8l5 5 5-2M30 24l2 12M32 36l7 5-3 8M31 36l-3 8-8 6"/><path d="M16 55h32" style="stroke-width:2.5;opacity:.4"/></svg>`;
     if (pts.length < 2) return `<svg class="route none" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="15" r="4.6"/><path d="M20 31l5-7h7l5 4 4-2M28 25l3 10M31 35l6 4-4 5M30 35l-2 7-6 6M47 47l3-16 4-4"/><path class="d" d="M15 51l32-3"/></svg>`;
     const c = Math.cos(pts[0][0] * Math.PI / 180);
     const xs = pts.map(p => p[1] * c), ys = pts.map(p => -p[0]);
@@ -1614,7 +1615,7 @@
       const st = done[r.date], a = st && st.analysis, pd = plan && dayAt(r.date);
       const chip = a ? `<span class="chip ${a.status === 'ok' ? 'good' : a.status}">${a.status === 'ok' ? 'No alvo' : a.status === 'warn' ? 'Atenção' : 'Abaixo'}</span>` : '';
       const when = r.date === today ? 'hoje' : r.date === addDays(today, -1) ? 'ontem' : `${WD[D(r.date).getDay()]} ${ddmm(r.date)}`;
-      return `<button class="rc" type="button" data-rdate="${r.date}" data-sid="${esc(r.stravaId || '')}">${routeSvg(r.poly)}<span class="rc-main"><span class="rc-top"><b>${esc(pd && pd.title && isRunType(pd.type) ? pd.title : r.name)}</b>${chip}</span><small class="muted">${when}${r.trainer ? ' · esteira' : ''}</small>` +
+      return `<button class="rc" type="button" data-rdate="${r.date}" data-sid="${esc(r.stravaId || '')}">${routeSvg(r.poly, 64, r.trainer)}<span class="rc-main"><span class="rc-top"><b>${esc(pd && pd.title && isRunType(pd.type) ? pd.title : r.name)}</b>${chip}</span><small class="muted">${when}${r.trainer ? ' · esteira' : ''}</small>` +
         `<span class="rc-m"><span><b>${r.km.toFixed(2).replace('.', ',')}</b> km</span><span><b>${A.fmtTime(r.sec)}</b></span><span><b>${A.fmtPace(r.sec / r.km)}</b>/km</span>${r.hr ? `<span><b>${r.hr}</b> bpm</span>` : ''}</span></span></button>`;
     }).join('') + `</div>`;
     bindGoto(box);

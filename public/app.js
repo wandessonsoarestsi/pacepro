@@ -1356,14 +1356,25 @@
 
   /* ---------- Atualizar o app ---------- */
   let appVer = null, newVer = false, swReg = null;
-  async function fetchVer() { try { const r = await fetch('/api/version', { cache: 'no-store' }); return r.ok ? (await r.json()).v || null : null; } catch (e) { return null; } }
+  // Versão = impressão digital dos arquivos do site. Muda a cada publicação, sem depender de configuração na Vercel.
+  async function fetchVer() {
+    try {
+      const txt = await Promise.all(['/index.html', '/app.js', '/styles.css', '/analysis.js', '/plan-generator.js', '/plan-parser.js'].map(u => fetch(u, { cache: 'no-store' }).then(r => { if (!r.ok) throw new Error(); return r.text(); })));
+      let h = 5381; const s = txt.join('\n');
+      for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+      return (h >>> 0).toString(36).padStart(7, '0').slice(-7);
+    } catch (e) { return null; }
+  }
   function showUpdate() {
     newVer = true; renderUpdate();
     let bar = $('updBar');
     if (!bar) { bar = document.createElement('div'); bar.id = 'updBar'; bar.className = 'updbar'; bar.innerHTML = `<span>Nova versão do PacePro disponível</span><button class="btn sm" type="button">Atualizar</button>`; document.body.appendChild(bar); bar.querySelector('button').onclick = doUpdate; }
     bar.hidden = false;
   }
+  let lastCheck = 0;
   async function checkUpdate(manual) {
+    if (!manual && Date.now() - lastCheck < 20000) return;
+    lastCheck = Date.now();
     if (swReg) swReg.update().catch(() => {});
     const v = await fetchVer();
     if (!appVer) appVer = v;
@@ -1386,6 +1397,8 @@
   }
   $('updNow').onclick = () => newVer ? doUpdate() : checkUpdate(true);
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkUpdate(false); });
+  window.addEventListener('pageshow', e => { if (e.persisted) checkUpdate(false); });
+  window.addEventListener('focus', () => checkUpdate(false));
   setInterval(() => checkUpdate(false), 30 * 60000);
 
   /* ---------- Calendário de provas ---------- */

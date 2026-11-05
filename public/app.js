@@ -212,7 +212,7 @@
     if (!strava.connected) return;
     const after = Math.floor(D(addDays(today, -90)).getTime() / 1000);
     const list = await api(`/api/strava/activities?after=${after}`);
-    runs = list.map(a => ({ id: 's' + a.id, stravaId: a.id, date: a.start.slice(0, 10), name: a.name, km: a.distance / 1000, sec: a.moving_time, hr: a.average_heartrate ? Math.round(a.average_heartrate) : null }));
+    runs = list.map(a => ({ id: 's' + a.id, stravaId: a.id, date: a.start.slice(0, 10), name: a.name, km: a.distance / 1000, sec: a.moving_time, hr: a.average_heartrate ? Math.round(a.average_heartrate) : null, poly: a.poly || null, trainer: !!a.trainer }));
     store.set(userKey('runs'), runs);
     store.set(userKey('synced'), Date.now());
   }
@@ -1565,6 +1565,59 @@
     };
   }
 
+  /* ---------- Últimos treinos no Início ---------- */
+  // Desenho do percurso a partir do polyline resumido do Strava.
+  function decodePoly(str) {
+    const pts = []; let i = 0, lat = 0, lng = 0;
+    while (i < str.length) {
+      for (const k of [0, 1]) {
+        let r = 0, sh = 0, b;
+        do { b = str.charCodeAt(i++) - 63; r |= (b & 31) << sh; sh += 5; } while (b >= 32 && i < str.length);
+        const v = r & 1 ? ~(r >> 1) : r >> 1;
+        if (k === 0) lat += v; else lng += v;
+      }
+      pts.push([lat / 1e5, lng / 1e5]);
+    }
+    return pts;
+  }
+  function routeSvg(poly, size) {
+    size = size || 64;
+    let pts; try { pts = poly ? decodePoly(poly) : []; } catch (e) { pts = []; }
+    if (pts.length < 2) return `<svg class="route none" viewBox="0 0 ${size} ${size}" aria-hidden="true"><rect x="16" y="22" width="32" height="20" rx="4"/><path d="M20 42l-4 8M44 42l4 8M22 32h20"/></svg>`;
+    const c = Math.cos(pts[0][0] * Math.PI / 180);
+    const xs = pts.map(p => p[1] * c), ys = pts.map(p => -p[0]);
+    const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+    const span = Math.max(x1 - x0, y1 - y0) || 1, pad = 7, k = (size - 2 * pad) / span;
+    const ox = pad + ((size - 2 * pad) - (x1 - x0) * k) / 2, oy = pad + ((size - 2 * pad) - (y1 - y0) * k) / 2;
+    const P = i => `${(ox + (xs[i] - x0) * k).toFixed(1)},${(oy + (ys[i] - y0) * k).toFixed(1)}`;
+    const d = 'M' + xs.map((_, i) => P(i)).join('L');
+    const [sx, sy] = P(0).split(','), [ex, ey] = P(xs.length - 1).split(',');
+    return `<svg class="route" viewBox="0 0 ${size} ${size}" aria-hidden="true"><path d="${d}"/><circle class="s" cx="${sx}" cy="${sy}" r="2.6"/><circle class="e" cx="${ex}" cy="${ey}" r="2.6"/></svg>`;
+  }
+  function renderRecent() {
+    const box = $('recentCard'); if (!box) return;
+    const rs = allRuns().slice(-3).reverse();
+    if (!rs.length) {
+      box.hidden = false;
+      box.innerHTML = `<div class="card-head"><h2>Últimos treinos</h2></div><p class="muted small">${strava.connected ? 'Nenhuma corrida nos últimos 90 dias no Strava.' : 'Conecte o Strava para ver aqui seus últimos treinos com o percurso.'}</p>${strava.connected ? '' : '<div class="row-actions"><button class="btn strava sm" type="button" data-strava-connect>Conectar com Strava</button></div>'}`;
+      return;
+    }
+    box.hidden = false;
+    box.innerHTML = `<div class="card-head"><h2>Últimos treinos</h2><a class="muted small" href="#progresso" data-goto="runsCard">ver todos ›</a></div><div class="recent">` + rs.map(r => {
+      const st = done[r.date], a = st && st.analysis, pd = plan && dayAt(r.date);
+      const chip = a ? `<span class="chip ${a.status === 'ok' ? 'good' : a.status}">${a.status === 'ok' ? 'No alvo' : a.status === 'warn' ? 'Atenção' : 'Abaixo'}</span>` : '';
+      const when = r.date === today ? 'hoje' : r.date === addDays(today, -1) ? 'ontem' : `${WD[D(r.date).getDay()]} ${ddmm(r.date)}`;
+      return `<button class="rc" type="button" data-rdate="${r.date}" data-sid="${esc(r.stravaId || '')}">${routeSvg(r.poly)}<span class="rc-main"><span class="rc-top"><b>${esc(pd && pd.title && isRunType(pd.type) ? pd.title : r.name)}</b>${chip}</span><small class="muted">${when}${r.trainer ? ' · esteira' : ''}</small>` +
+        `<span class="rc-m"><span><b>${r.km.toFixed(2).replace('.', ',')}</b> km</span><span><b>${A.fmtTime(r.sec)}</b></span><span><b>${A.fmtPace(r.sec / r.km)}</b>/km</span>${r.hr ? `<span><b>${r.hr}</b> bpm</span>` : ''}</span></span></button>`;
+    }).join('') + `</div>`;
+    bindGoto(box);
+    box.querySelectorAll('.rc').forEach(b => b.onclick = () => {
+      const dt = b.dataset.rdate;
+      if (plan && dt >= minDay() && dt <= lastDay()) { selected = dt; renderAll(); setTimeout(() => { const w = $('analysis').hidden ? $('workout') : $('analysis'); w.scrollIntoView({ block: 'start', behavior: 'smooth' }); }, 60); }
+      else if (b.dataset.sid) window.open(`https://www.strava.com/activities/${encodeURIComponent(b.dataset.sid)}`, '_blank', 'noopener');
+    });
+  }
+
   /* ---------- Rotas ---------- */
   const VIEWS = ['hoje', 'plano', 'progresso', 'provas', 'ajustes'];
   function route() {
@@ -1610,7 +1663,7 @@
     const has = !!plan;
     document.querySelectorAll('[data-no-plan]').forEach(el => { el.hidden = has; });
     document.querySelectorAll('[data-needs-plan]').forEach(el => { el.hidden = !has; });
-    if (has) { renderSummary(); renderAdjust(); renderWorkout(); renderDiet(); renderPlan(); renderRace(); renderTest(); renderWeekSum(); renderNext(); }
+    if (has) { renderSummary(); renderAdjust(); renderWorkout(); renderDiet(); renderPlan(); renderRace(); renderTest(); renderWeekSum(); renderNext(); renderRecent(); }
     renderProgress(); renderVolume(); renderCadence(); renderZones(); renderWeight(); renderWxSettings(); renderSettings(); renderHr(); renderInstall(); renderUpdate(); renderRaces(); renderWelcome(); bindStravaButtons(); route();
   }
   function bindStravaButtons() {

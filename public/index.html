@@ -49,6 +49,7 @@
         <div class="card adjust" id="adjust" hidden></div>
         <div class="card workout" id="workout"></div>
         <div class="card analysis" id="analysis" hidden></div>
+        <div class="card" id="nextCard" hidden></div>
         <a class="card summary" id="summaryCard" href="#progresso" aria-label="Ver progresso">
           <div class="sm">
             <div class="smh"><span class="lbl">Ciclo até a prova</span><b id="sDays">–</b></div>
@@ -132,6 +133,12 @@
     </section>
 
     <!-- AJUSTES -->
+    <!-- PROVAS -->
+    <section data-view="provas" class="view" hidden>
+      <div class="card" id="racesCard"></div>
+      <div class="card" id="raceFormCard" hidden></div>
+    </section>
+
     <section data-view="ajustes" class="view" hidden>
       <div class="card">
         <div class="card-head"><div class="hgroup"><span class="brand-ico strava-ico">S</span><h2>Strava</h2></div><span class="chip" id="stravaChip">–</span></div>
@@ -215,6 +222,12 @@
         <div class="row-actions"><button class="btn" id="installBtn" type="button" hidden>Instalar o app</button></div>
       </div>
 
+      <div class="card" id="updCard">
+        <div class="card-head"><h2>Atualizações</h2><span class="chip" id="updChip">–</span></div>
+        <p class="muted small" id="updText">–</p>
+        <div class="row-actions"><button class="btn ghost" id="updNow" type="button">Verificar atualização</button></div>
+      </div>
+
       <div class="card">
         <div class="card-head"><h2>Seus dados</h2></div>
         <p class="muted small">Tudo fica salvo só neste aparelho. Baixe um backup para guardar ou levar para outro aparelho.</p>
@@ -233,6 +246,7 @@
     <a href="#hoje" data-tab="hoje"><span class="ti"><svg viewBox="0 0 24 24"><path d="M4 11l8-7 8 7v9a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z"/></svg></span><span>Hoje</span></a>
     <a href="#plano" data-tab="plano"><span class="ti"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg></span><span>Plano</span></a>
     <a href="#progresso" data-tab="progresso"><span class="ti"><svg viewBox="0 0 24 24"><path d="M4 19h16M6 15l4-4 3 3 5-6"/></svg></span><span>Progresso</span></a>
+    <a href="#provas" data-tab="provas"><span class="ti"><svg viewBox="0 0 24 24"><path d="M6 21V4M6 4h11l-2 4 2 4H6"/></svg></span><span>Provas</span></a>
     <a href="#ajustes" data-tab="ajustes"><span class="ti"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/></svg></span><span>Ajustes</span></a>
   </nav>
 </div>

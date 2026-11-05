@@ -1,12 +1,14 @@
-const { getUser, getTokens, fail } = require('../_lib');
+const { getAccess, fail } = require('../_lib');
 
 module.exports = async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
-  const configured = !!(process.env.STRAVA_CLIENT_ID && process.env.STRAVA_CLIENT_SECRET && process.env.SUPABASE_SERVICE_ROLE_KEY);
+  const configured = !!(process.env.STRAVA_CLIENT_ID && process.env.STRAVA_CLIENT_SECRET && process.env.SESSION_SECRET);
   try {
     if (!configured) return res.json({ connected: false, configured, athlete: null });
-    const user = await getUser(req);
-    const t = await getTokens(user.id);
-    res.json({ connected: !!t, configured, athlete: t ? { id: t.athlete_id, name: t.athlete_name } : null });
-  } catch (e) { fail(res, e); }
+    const s = await getAccess(req, res);
+    res.json({ connected: !!s, configured, athlete: s ? s.athlete : null });
+  } catch (e) {
+    if (e.status === 401) { require('../_lib').setSession(res, null); return res.json({ connected: false, configured, athlete: null }); }
+    fail(res, e);
+  }
 };

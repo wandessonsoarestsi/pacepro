@@ -23,8 +23,7 @@
   let done = {};
   let runs = [];
   let planMd = null;
-  const Cloud = { sb: null, user: null, session: null, enabled: false };
-  const userKey = k => `pp.${Cloud.user ? Cloud.user.id : 'local'}.${k}`;
+  const userKey = k => `pp.local.${k}`;
   let strava = { connected: false, configured: true, athlete: null, checked: false };
   const today = isoLocal(new Date());
   let selected = today;
@@ -43,30 +42,21 @@
   }
   async function examplePlanMd() { const r = await fetch('/plano.md', { cache: 'no-cache' }); return r.text(); }
 
-  /* ---------- Dados do usuário (Supabase ou este aparelho) ---------- */
+  /* ---------- Dados (salvos neste aparelho) ---------- */
   let saveTimer = null;
   function persist() {
     clearTimeout(saveTimer);
     saveTimer = setTimeout(saveNow, 600);
   }
-  async function saveNow() {
-    const row = { plan_md: planMd, done, updated_at: new Date().toISOString() };
-    if (Cloud.enabled && Cloud.user) {
-      const { error } = await Cloud.sb.from('user_state').upsert({ user_id: Cloud.user.id, ...row });
-      if (error) showToast('Não consegui salvar agora. Tentando de novo…', true), setTimeout(persist, 5000);
-    } else store.set(userKey('state'), row);
+  function saveNow() {
+    store.set(userKey('state'), { plan_md: planMd, done, updated_at: new Date().toISOString() });
   }
-  async function loadState() {
-    let row = null;
-    if (Cloud.enabled && Cloud.user) {
-      const { data, error } = await Cloud.sb.from('user_state').select('plan_md, done').eq('user_id', Cloud.user.id).maybeSingle();
-      if (error) throw error;
-      row = data;
-      if (!row) { // primeiro acesso: traz o que estava salvo neste aparelho
-        const legacyPlan = store.get('sub30.planmd', null), legacyDone = store.get('sub30.done', null);
-        if (legacyPlan || legacyDone) { row = { plan_md: legacyPlan, done: legacyDone || {} }; planMd = row.plan_md; done = row.done; await saveNow(); }
-      }
-    } else row = store.get(userKey('state'), null);
+  function loadState() {
+    let row = store.get(userKey('state'), null);
+    if (!row) { // versão antiga do site
+      const legacyPlan = store.get('sub30.planmd', null), legacyDone = store.get('sub30.done', null);
+      if (legacyPlan || legacyDone) row = { plan_md: legacyPlan, done: legacyDone || {} };
+    }
     done = (row && row.done) || {};
     applyPlanMd(row && row.plan_md, 'salvo');
     runs = store.get(userKey('runs'), []);
@@ -102,13 +92,8 @@
   const estimateAt = date => A.estimate(date, allRuns(), analyses(), distKm());
 
   /* ---------- Strava ---------- */
-  async function authHeader() {
-    if (!Cloud.enabled) return {};
-    const { data } = await Cloud.sb.auth.getSession();
-    return data.session ? { Authorization: `Bearer ${data.session.access_token}` } : {};
-  }
   async function api(path, opts) {
-    const r = await fetch(path, { ...(opts || {}), headers: { ...(await authHeader()), ...((opts && opts.headers) || {}) } });
+    const r = await fetch(path, { credentials: 'same-origin', ...(opts || {}) });
     let j = null; try { j = await r.json(); } catch (e) {}
     if (!r.ok) throw Object.assign(new Error((j && j.error) || 'Falha ao falar com o Strava.'), { status: r.status });
     return j;
@@ -361,7 +346,6 @@
     $('stravaSync').hidden = !strava.connected;
     $('stravaOut').hidden = !strava.connected;
     $('planInfo').textContent = plan ? `${plan.title} · ${plan.weeks.length} semanas, ${plan.days.length} dias · prova em ${ddmm(raceISO())}.` : 'Nenhum plano ainda. Gere um acima, importe um arquivo .md ou use o plano de exemplo.';
-    renderProfile();
     const t = store.get('sub30.theme', 'system');
     document.querySelectorAll('#themePills button').forEach(b => b.setAttribute('aria-checked', String(b.dataset.t === t)));
   }
@@ -457,7 +441,6 @@
   function bindStravaButtons() {
     document.querySelectorAll('[data-strava-connect]').forEach(b => {
       b.onclick = async () => {
-        if (Cloud.enabled && !Cloud.user) return;
         b.disabled = true;
         try { const j = await api('/api/strava/login'); location.href = j.url; }
         catch (e) { b.disabled = false; showToast(e.message, true); }
@@ -465,46 +448,27 @@
     });
   }
   document.querySelectorAll('[data-example]').forEach(b => b.onclick = async () => { try { setPlanMd(await examplePlanMd(), 'exemplo'); } catch (e) { showToast('Não consegui carregar o exemplo.', true); } });
-  $('signOut').onclick = async () => { if (Cloud.enabled) { await Cloud.sb.auth.signOut(); } location.replace('/'); };
-  function renderProfile() {
-    const u = Cloud.user;
-    $('profileCard').hidden = !u;
-    if (!u) return;
-    const m = u.user_metadata || {};
-    $('pName').textContent = m.full_name || m.name || u.email;
-    $('pEmail').textContent = u.email || '';
-    if (m.avatar_url) { $('pAvatar').src = m.avatar_url; $('pAvatar').hidden = false; }
-  }
-
-  async function startCloud() {
-    let cfg = null;
-    try { const r = await fetch('/api/config'); if (r.ok) cfg = await r.json(); } catch (e) {}
-    if (!cfg || !cfg.supabaseUrl || !cfg.supabaseAnonKey || !window.supabase) return false;
-    Cloud.sb = window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, { auth: { flowType: 'pkce', detectSessionInUrl: true, persistSession: true, autoRefreshToken: true } });
-    Cloud.enabled = true;
-    const { data } = await Cloud.sb.auth.getSession();
-    Cloud.session = data.session; Cloud.user = data.session ? data.session.user : null;
-    Cloud.sb.auth.onAuthStateChange((ev, session) => { if (ev === 'SIGNED_OUT') location.replace('/'); Cloud.session = session; });
-    return true;
-  }
-  function showLogin(msg) {
-    $('app').hidden = true; $('login').hidden = false;
-    if (msg) { $('loginMsg').hidden = false; $('loginMsg').textContent = msg; }
-    $('googleBtn').onclick = async () => {
-      $('googleBtn').disabled = true;
-      const { error } = await Cloud.sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: location.origin + '/' } });
-      if (error) { $('googleBtn').disabled = false; $('loginMsg').hidden = false; $('loginMsg').textContent = 'Não consegui abrir o login do Google. Tente de novo.'; }
-    };
-  }
+  $('bkSave').onclick = () => {
+    const blob = new Blob([JSON.stringify({ app: 'pacepro', v: 1, plan_md: planMd, done, runs }, null, 1)], { type: 'application/json' });
+    const el = document.createElement('a'); el.href = URL.createObjectURL(blob); el.download = `pacepro-backup-${today}.json`;
+    document.body.appendChild(el); el.click(); el.remove(); setTimeout(() => URL.revokeObjectURL(el.href), 1000);
+  };
+  $('bkFile').onchange = async e => {
+    const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+    try {
+      const j = JSON.parse(await f.text());
+      if (!j || j.app !== 'pacepro') throw new Error();
+      done = j.done || {}; runs = Array.isArray(j.runs) ? j.runs : []; store.set(userKey('runs'), runs);
+      setPlanMd(j.plan_md || null, 'salvo'); saveNow(); showToast('Backup restaurado.');
+    } catch (err) { showToast('Esse arquivo não é um backup do PacePro.', true); }
+  };
 
   (async function boot() {
     const params = new URLSearchParams(location.search);
     const q = params.get('strava');
-    const cloud = await startCloud();
-    if (params.has('code') || params.has('error_description') || q) history.replaceState(null, '', '/' + location.hash);
-    if (cloud && !Cloud.user) { showLogin(params.get('error_description') ? 'O login não foi concluído. Tente de novo.' : null); return; }
-    try { await loadState(); } catch (e) { showToast('Não consegui carregar seus dados.', true); }
-    if (!cloud && !plan) { try { applyPlanMd(await examplePlanMd(), 'exemplo'); } catch (e) {} }
+    if (q) history.replaceState(null, '', '/' + location.hash);
+    loadState();
+    if (!plan) { try { applyPlanMd(await examplePlanMd(), 'exemplo'); } catch (e) {} }
     if (plan) { clampSelected(); if (plan.race > today) $('gRace').value = plan.race; if (plan.goalSec) $('gGoal').value = A.fmtTime(plan.goalSec); }
     renderAll();
     await checkStrava();

@@ -903,6 +903,8 @@
     $('stravaOut').hidden = !strava.connected;
     $('planInfo').textContent = plan ? `${plan.title} · ${plan.weeks.length} semanas · para ${planRaceLabel()} em ${ddmm(raceISO())}.` : 'Nenhum plano ainda. Gere um novo, importe um arquivo .md ou use o plano de exemplo.';
     $('planChip').textContent = plan ? planSource : 'sem plano';
+    $('planDelRow').hidden = !plan || !$('planDelAsk').hidden;
+    if (!plan) $('planDelAsk').hidden = true;
     $('genBox').hidden = !genOpen;
     $('genToggle').setAttribute('aria-expanded', String(genOpen));
     let t = 'system'; try { t = localStorage.getItem('sub30.theme') || 'system'; } catch (e) {}
@@ -938,6 +940,15 @@
       clampSelected(); renderAll();
     } catch (err) { msg.className = 'msg bad'; msg.textContent = err.message; }
     e.target.value = '';
+  };
+  // Apagar o plano: pede confirmação antes.
+  $('planDel').onclick = () => { $('planDelRow').hidden = true; $('planDelAsk').hidden = false; };
+  $('planDelNo').onclick = () => { $('planDelAsk').hidden = true; $('planDelRow').hidden = !plan; };
+  $('planDelYes').onclick = () => {
+    $('planDelAsk').hidden = true;
+    extra = { ...extra, moves: {}, skips: {}, soft: {}, dismiss: {}, acts: null, test: null, fresh: true };
+    setPlanMd(null, ''); saveNow(); track('plano-apagado');
+    const msg = $('planMsg'); msg.hidden = false; msg.className = 'msg'; msg.textContent = 'Plano apagado.';
   };
   $('planReset').onclick = async () => { try { setPlanMd(await examplePlanMd(), 'exemplo'); const msg = $('planMsg'); msg.hidden = false; msg.className = 'msg'; msg.textContent = 'Plano de exemplo carregado.'; } catch (e) { showToast('Não consegui carregar o exemplo.', true); } };
   let clearArmed = false;

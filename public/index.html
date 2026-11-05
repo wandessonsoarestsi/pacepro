@@ -66,6 +66,7 @@
           </div>
           <span class="more" aria-hidden="true">›</span>
         </a>
+        <div class="card" id="weekSumHome" hidden></div>
         <div class="card" id="dietCard" hidden></div>
       </div>
     </section>
@@ -78,6 +79,26 @@
         <div class="card" id="weekNote"></div>
         <div class="card list" id="weekDays"></div>
         <div class="card" id="raceCard"></div>
+        <div class="card" id="testCard"></div>
+        <details class="card calc" id="calcCard">
+          <summary><h2>Calculadora de ritmo</h2><span class="muted small">ritmo, esteira e tempo de prova</span></summary>
+          <div class="calc-grid">
+            <label>Ritmo (min/km)<input id="cPace" type="text" inputmode="numeric" placeholder="6:00"></label>
+            <span class="calc-eq">=</span>
+            <label>Esteira (km/h)<input id="cKmh" type="text" inputmode="decimal" placeholder="10,0"></label>
+          </div>
+          <div class="calc-grid">
+            <label>Distância
+              <select id="cDist"><option value="1">1 km</option><option value="3">3 km</option><option value="5" selected>5 km</option><option value="10">10 km</option><option value="21.0975">21,1 km</option><option value="42.195">42,2 km</option></select></label>
+            <span class="calc-eq">→</span>
+            <div class="calc-out"><span class="muted small">Tempo final</span><b id="cTime">–</b></div>
+          </div>
+          <div class="calc-grid">
+            <label>Tempo-alvo<input id="cGoal" type="text" inputmode="numeric" placeholder="30:00"></label>
+            <span class="calc-eq">→</span>
+            <div class="calc-out"><span class="muted small">Ritmo necessário</span><b id="cNeed">–</b></div>
+          </div>
+        </details>
         <button class="btn ghost wide" id="openFull" type="button">Ver o plano completo</button>
         <div class="card prose" id="fullPlan" hidden></div>
       </div>
@@ -96,7 +117,11 @@
         <svg class="chart" id="chart" viewBox="0 0 400 240" role="img" aria-label="Evolução da estimativa de tempo"></svg>
         <div class="legend"><span><i class="lg c3"></i>Estimativa</span><span><i class="lg c2 dash"></i>Projeção</span><span><i class="lg c1 dash"></i>Meta</span></div>
         <p class="muted small" id="chartHint"></p>
+        <button class="btn ghost sm" id="shareProg" type="button" data-needs-plan>Compartilhar evolução</button>
       </div>
+      <div class="card" id="weekSum"></div>
+      <div class="card" id="volCard"></div>
+      <div class="card" id="cadCard"></div>
       <div class="card" id="weightCard"></div>
       <div class="card" id="zonesCard"></div>
       <div class="card list">
@@ -173,6 +198,14 @@
             <button class="btn ghost" type="submit">Salvar</button>
           </form>
           <p class="muted small" id="hrText">–</p>
+        </div>
+        <div class="prow col">
+          <div class="card-head"><b>Clima</b><span class="chip" id="wxChip">–</span></div>
+          <div class="wform">
+            <select id="wxHour" aria-label="Horário do treino"></select>
+            <button class="btn ghost" id="wxLoc" type="button">Usar minha localização</button>
+          </div>
+          <p class="muted small" id="wxText">–</p>
         </div>
       </div>
 

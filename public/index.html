@@ -39,11 +39,15 @@
   <main>
     <!-- HOJE -->
     <section data-view="hoje" class="view">
-      <div class="card noplan" data-no-plan hidden>
-        <span class="eyebrow">Primeiro passo</span>
-        <h3>Você ainda não tem um plano</h3>
-        <p class="muted">Gere um plano para a sua próxima prova em poucos segundos, importe um arquivo .md ou comece pelo plano de exemplo.</p>
-        <div class="row-actions"><a class="btn" href="#ajustes" data-open-gen>Gerar meu plano</a><button class="btn ghost" type="button" data-example>Usar plano de exemplo</button></div>
+      <div class="card noplan welcome" data-no-plan hidden>
+        <span class="eyebrow">Bem-vindo ao PacePro</span>
+        <h3>Seu plano de corrida em 2 passos</h3>
+        <p class="muted">Tudo fica salvo só neste celular. Sem cadastro e sem senha.</p>
+        <ol class="steps">
+          <li id="wStrava"><span class="n">1</span><div><b>Conecte o Strava</b><small class="muted">Opcional. Seus treinos são analisados sozinhos e o app calcula seu nível atual.</small><div class="row-actions"><button class="btn strava" type="button" data-strava-connect>Conectar com Strava</button></div></div></li>
+          <li><span class="n">2</span><div><b>Cadastre sua próxima prova</b><small class="muted">Data, distância e meta. O app monta o plano até o dia da prova.</small><div class="row-actions"><button class="btn" type="button" id="wRace">Cadastrar minha prova</button></div></div></li>
+        </ol>
+        <p class="small muted">Só quer ver como funciona? <button class="linkbtn" type="button" data-example>Abrir o plano de exemplo</button></p>
       </div>
       <div class="stack" data-needs-plan id="todayStack">
         <div class="card adjust" id="adjust" hidden></div>

@@ -176,10 +176,17 @@
               <select id="gDays"><option>3</option><option selected>4</option><option>5</option></select></label>
             <label for="gLevel">Momento atual
               <select id="gLevel"><option value="normal">Treinando normalmente</option><option value="pausa">Voltando de uma pausa</option><option value="iniciante">Começando agora</option></select></label>
-            <div class="checks">
-              <label for="gSwim"><input id="gSwim" type="checkbox" checked> Natação (ter e qui)</label>
-              <label for="gGym"><input id="gGym" type="checkbox" checked> Musculação (seg a sex)</label>
-            </div>
+            <fieldset class="full xtra">
+              <legend>Além da corrida (opcional)</legend>
+              <div class="checks">
+                <label for="gGym"><input id="gGym" type="checkbox"> Musculação</label>
+                <label for="gSwim"><input id="gSwim" type="checkbox" data-cross="swim"> Natação</label>
+                <label for="gBike"><input id="gBike" type="checkbox" data-cross="bike"> Bike</label>
+                <label for="gMob"><input id="gMob" type="checkbox" data-cross="mobility"> Mobilidade</label>
+              </div>
+              <input id="gOther" type="text" maxlength="40" placeholder="Outra: funcional, pilates, remo…" aria-label="Outra atividade">
+              <small class="muted">Musculação vai de segunda a sexta. As outras ficam nos dias sem corrida e revezam entre si.</small>
+            </fieldset>
             <label for="gCur" class="full">Tempo atual nos 5 km (opcional)<input id="gCur" type="text" inputmode="numeric" placeholder="calculado pelas suas corridas"></label>
             <button class="btn full" id="gBtn" type="submit">Gerar plano</button>
           </form>

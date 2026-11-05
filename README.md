@@ -7,6 +7,7 @@ aparelho (com backup em Ajustes) e a conexão com o Strava fica num cookie cript
 ## Funções
 
 - Treino do dia, plano completo, contagem regressiva e estimativa de tempo.
+- Gerador de plano com atividades opcionais além da corrida: musculação, natação, bike, mobilidade ou outra escrita pela pessoa.
 - Análise automática: ao abrir o app, as corridas do Strava dos últimos 7 dias são ligadas aos dias do plano e analisadas.
 - Como foi o treino: esforço (1 a 10), dor e sono. Sinais de cansaço sugerem trocar o próximo treino forte por leve.
 - Ajuste do plano: treino-chave que ficou sem fazer pode ser passado para outro dia da semana ou pulado (tudo pode ser desfeito).

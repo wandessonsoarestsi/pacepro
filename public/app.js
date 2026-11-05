@@ -41,7 +41,10 @@
   }
 
   /* ---------- Ajustes do plano (treino remarcado, pulado ou aliviado) ---------- */
-  const isRunType = t => !['swim', 'rest'].includes(t);
+  // Atividades que não são corrida: natação, bike, mobilidade e outra escolhida pela pessoa.
+  const CROSS_T = ['swim', 'bike', 'mobility', 'cross'];
+  const isCross = t => CROSS_T.includes(t);
+  const isRunType = t => !isCross(t) && t !== 'rest';
   // Treino forte: intervalado, limiar, teste ou o longo do fim de semana.
   const isHard = d => !!d && (['interval', 'threshold', 'test'].includes(d.type) || (d.type === 'easy' && d.key && [0, 6].includes(D(d.date).getDay())));
   function applyAdjust() {
@@ -185,7 +188,7 @@
     let html = '';
     for (let i = 0; i < 7; i++) {
       const dt = addDays(mon, i), x = dayAt(dt), off = dt < minDay() || dt > lastDay();
-      const kind = !x ? 'none' : x.type === 'swim' ? 'swim' : x.type === 'rest' ? (x.gym ? 'gym' : 'rest') : x.type === 'race' ? 'race' : 'run';
+      const kind = !x ? 'none' : isCross(x.type) ? 'swim' : x.type === 'rest' ? (x.gym ? 'gym' : 'rest') : x.type === 'race' ? 'race' : 'run';
       const mark = done[dt] ? '<i class="mk done"></i>' : `<i class="mk ${kind}${x && x.key && kind === 'run' ? ' key' : ''}"></i>`;
       html += `<button type="button" role="tab" class="wd${dt === today ? ' today' : ''}" data-d="${dt}" aria-selected="${dt === selected}"${off ? ' disabled' : ''} aria-label="${WDL[D(dt).getDay()]} ${ddmm(dt)}${x ? ', ' + esc(x.title) : ''}${done[dt] ? ', feito' : ''}"><span class="wl">${LET[D(dt).getDay()]}</span><span class="wn">${D(dt).getDate()}</span>${mark}</button>`;
     }
@@ -207,7 +210,7 @@
     $('sDays').textContent = today > raceISO() ? 'Concluído' : ms <= 0 || raceISO() === today ? 'É hoje!' : days === 1 ? '1 dia' : `${days} dias`;
     const day = dayOf(selected);
     const wk = day ? plan.weeks.find(w => w.n === day.week) : null;
-    const keyDays = wk ? wk.days.filter(x => x.type !== 'rest' && x.type !== 'swim') : [];
+    const keyDays = wk ? wk.days.filter(x => isRunType(x.type)) : [];
     const nDone = keyDays.filter(x => done[x.date]).length;
     $('sWeek').textContent = keyDays.length ? `${nDone}/${keyDays.length}` : '–';
     const est = estimateAt(today);
@@ -276,7 +279,8 @@
       `<div class="tbl"><table><thead><tr>${head.map(h => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${g.rows.map(r => `<tr>${r.map(c => `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div></details>`;
   }
 
-  const TYPE_LABEL = { easy: 'Leve', threshold: 'Limiar', interval: 'Intervalado', test: 'Teste', race: 'Prova', swim: 'Natação', rest: 'Descanso' };
+  const TYPE_LABEL = { easy: 'Leve', threshold: 'Limiar', interval: 'Intervalado', test: 'Teste', race: 'Prova', swim: 'Natação', bike: 'Bike', mobility: 'Mobilidade', cross: 'Outra atividade', rest: 'Descanso' };
+  const CROSS_TIP = { swim: 'Técnica e respiração, sem séries fortes.', bike: 'Giro solto e leve: soma condicionamento sem o impacto da corrida.', mobility: 'Quadril, tornozelo e posterior de coxa, sem forçar e sem dor.', cross: 'Intensidade leve. O foco do plano é a corrida, então não chegue cansado no próximo treino.' };
   const TIP = {
     easy: 'FC até ~145. Passou disso, caminhe até baixar e volte a trotar.',
     threshold: 'FC entre 150 e 165, ritmo constante. Se for quebrar, reduza 10–15 s/km em vez de parar.',
@@ -301,7 +305,7 @@
     if (!day && selected > raceISO()) { el.innerHTML = `<div class="wk-top"><div><span class="eyebrow">Plano concluído</span><h3>Ciclo encerrado</h3></div></div><p class="muted">A semana de recuperação acabou. Defina o próximo objetivo logo abaixo e o app monta um plano novo.</p>`; $('analysis').hidden = true; return; }
     if (!day) { el.innerHTML = `<p class="muted">Sem treino planejado para este dia.</p>`; $('analysis').hidden = true; return; }
     const st = done[day.date];
-    const isRun = !['swim', 'rest'].includes(day.type);
+    const isRun = isRunType(day.type);
     let html = `<div class="wk-top"><div><span class="eyebrow">${day.recovery ? `Recuperação · dia ${day.recovery} de 7` : esc(TYPE_LABEL[day.type])}${day.key && isRun ? ' · treino-chave' : ''}</span><h3>${esc(day.title)}</h3></div>` +
       (st ? `<span class="chip good">${CHECK}Feito</span>` : '') + `</div>`;
     if (isRun) {
@@ -317,8 +321,8 @@
         `<p class="note">${TIP[day.type] || ''} Aquecimento 10' leve e desaquecimento 5–10'.</p></div>`;
       if (!st && day.date >= addDays(today, -1)) html += wxBlock(day);
     }
-    if (day.type === 'swim') html += `<div class="blk swim"><span class="k">Natação</span><b>${esc(day.title)}</b><p class="note">Técnica e respiração, sem séries fortes.</p></div>`;
-    if (day.gym) html += gymBlock(day.gym, day, !isRun && day.type !== 'swim');
+    if (isCross(day.type)) html += `<div class="blk swim"><span class="k">${esc(TYPE_LABEL[day.type])}</span><b>${esc(day.title)}</b><p class="note">${CROSS_TIP[day.type]}</p></div>`;
+    if (day.gym) html += gymBlock(day.gym, day, !isRun && !isCross(day.type));
     if (day.type === 'rest' && !day.gym) html += `<p class="muted">${esc(day.rua && !/^descanso$/i.test(day.rua) ? day.rua : 'Descanso total. Sono, água e boa comida.')}</p>`;
     const adj = day.movedFrom ? `Treino de ${WD[D(day.movedFrom).getDay()]} ${ddmm(day.movedFrom)} remarcado para hoje.` : day.movedTo ? '' : day.skipped ? '' : day.softened ? `Era "${day.softened}". Trocado por leve para recuperar.` : '';
     if (day.movedFrom || day.movedTo || day.skipped || day.softened) html += `<div class="blk adj"><span class="k">Plano ajustado</span>${adj ? `<p class="note">${esc(adj)}</p>` : ''}<button class="linkbtn" id="undoAdj" type="button">Desfazer ajuste</button></div>`;
@@ -362,7 +366,7 @@
 
   async function finish(day, again) {
     if (busy) return;
-    const isRun = !['swim', 'rest'].includes(day.type);
+    const isRun = isRunType(day.type);
     if (!isRun) { done[day.date] = { at: Date.now() }; persist(); renderAll(); return; }
     if (!strava.connected) {
       $('finishArea').innerHTML = `<p class="msg">Conecte o Strava para puxar os dados desse treino.</p><div class="row-actions"><button class="btn strava" type="button" data-strava-connect>Conectar com Strava</button><button class="btn ghost" id="noData" type="button">Marcar sem dados</button></div>`;
@@ -431,12 +435,15 @@
   const ICON = {
     run: '<svg viewBox="0 0 24 24"><circle cx="14" cy="4.5" r="1.8"/><path d="M8 21l3-6 3 2v5M6 12l3-3 4 1 2 3 3 1"/></svg>',
     swim: '<svg viewBox="0 0 24 24"><path d="M2 18c2 0 2-1.5 4-1.5S8 18 10 18s2-1.5 4-1.5 2 1.5 4 1.5 2-1.5 4-1.5M7 13l4-4 3 3M14 6.5a1.5 1.5 0 1 0 0-.1"/></svg>',
-    rest: '<svg viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>'
+    rest: '<svg viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>',
+    bike: '<svg viewBox="0 0 24 24"><circle cx="6" cy="16" r="3.5"/><circle cx="18" cy="16" r="3.5"/><path d="M6 16l4-7h5l3 7M10 9l2 7h-2M14 5h2"/></svg>',
+    mobility: '<svg viewBox="0 0 24 24"><circle cx="12" cy="4.5" r="1.8"/><path d="M4 9h16M12 9v5l-4 6M12 14l4 6"/></svg>',
+    cross: '<svg viewBox="0 0 24 24"><path d="M12 3l2.5 5.5L20 9.5l-4 4 1 5.5-5-2.8L7 19l1-5.5-4-4 5.5-1z"/></svg>'
   };
   function renderPlan() {
     const d = dayOf(selected), cur = dayOf(today);
     if (planWeek == null) planWeek = d ? d.week : plan.weeks[0].n;
-    const counted = x => x.type !== 'rest' && x.type !== 'swim';
+    const counted = x => isRunType(x.type);
     $('weekPills').innerHTML = plan.weeks.map(w => {
       const k = w.days.filter(counted), all = k.length && k.every(x => done[x.date]);
       return `<button type="button" role="tab" data-w="${w.n}" aria-selected="${w.n === planWeek}" class="${cur && cur.week === w.n ? 'now' : ''}">SEM ${w.n}${all ? ' ✓' : ''}</button>`;
@@ -449,9 +456,9 @@
       (k.length ? `<div class="pbar"><i style="width:${Math.round(100 * nDone / k.length)}%"></i></div>` : '') +
       (w.note ? `<p class="muted small">${esc(w.note)}</p>` : '');
     $('weekDays').innerHTML = w.days.map(x => {
-      const dt = D(x.date); const kind = x.type === 'swim' ? 'swim' : x.type === 'rest' ? 'rest' : 'run';
+      const dt = D(x.date); const kind = isCross(x.type) ? 'swim' : x.type === 'rest' ? 'rest' : 'run';
       const right = done[x.date] ? `<span class="done">${CHECK}</span>` : x.gym ? `<span class="chip">${esc(x.gym)}</span>` : '';
-      return `<button type="button" class="lrow ${x.date === today ? 'today' : ''}" data-d="${x.date}"><span class="ico ${x.key && kind === 'run' ? 'key' : kind}">${ICON[kind]}</span><span style="min-width:0"><span class="t">${esc(x.title)}</span><span class="s">${x.date === today ? 'hoje' : WD[dt.getDay()] + ' ' + ddmm(x.date)} · ${esc(TYPE_LABEL[x.type])}${x.key && kind === 'run' ? ' · chave' : ''}</span></span>${right}<span class="chev" aria-hidden="true">›</span></button>`;
+      return `<button type="button" class="lrow ${x.date === today ? 'today' : ''}" data-d="${x.date}"><span class="ico ${x.key && kind === 'run' ? 'key' : kind}">${ICON[x.type] || ICON[kind]}</span><span style="min-width:0"><span class="t">${esc(x.title)}</span><span class="s">${x.date === today ? 'hoje' : WD[dt.getDay()] + ' ' + ddmm(x.date)} · ${esc(TYPE_LABEL[x.type])}${x.key && kind === 'run' ? ' · chave' : ''}</span></span>${right}<span class="chev" aria-hidden="true">›</span></button>`;
     }).join('');
     document.querySelectorAll('#weekDays .lrow').forEach(b => b.onclick = () => { selected = b.dataset.d; location.hash = 'hoje'; renderAll(); window.scrollTo(0, 0); });
   }
@@ -577,7 +584,7 @@
       if ($('gCur').value.trim() && !cur) { msg.className = 'msg bad'; msg.textContent = 'Escreva o tempo atual nos 5 km como 42:30.'; return; }
       if (!cur) { const est = estimateAt(today); cur = est ? est.sec * (5 / distKm()) : null; }
       try {
-        const md = window.PlanGenerator.generate({ start, race, distanceKm: +$('gDist').value, goalSec, currentSec5k: cur, runDays: +$('gDays').value, swim: $('gSwim').checked, gym: $('gGym').checked, level: $('gLevel').value });
+        const md = window.PlanGenerator.generate({ start, race, distanceKm: +$('gDist').value, goalSec, currentSec5k: cur, runDays: +$('gDays').value, cross: [...document.querySelectorAll('[data-cross]:checked')].map(b => b.dataset.cross).concat($('gOther').value.trim() ? [{ name: $('gOther').value.trim() }] : []), gym: $('gGym').checked, level: $('gLevel').value });
         const p = P.parse(md);
         if (!p.days.length) throw new Error('Não consegui montar o plano com esses dados.');
         generated = md;

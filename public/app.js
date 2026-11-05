@@ -75,7 +75,7 @@
     // Análise geral para o cartão final
     const half = total / 2, ih = idx(half), sum = [];
     const p1 = (s.t[ih] - s.t[0]) / (half / 1000), p2 = (s.t[s.n - 1] - s.t[ih]) / ((total - half) / 1000), ds = Math.round(p2 - p1);
-    if (reps) sum.push(`Treino de ${reps} tiros: o resumo de cada um aparece no mapa.`);
+    if (reps) sum.push(`Treino de ${reps} tiros concluído.`);
     else if (ds <= -5) sum.push(`Split negativo: a segunda metade foi ${-ds} s/km mais rápida. Ótima gestão de ritmo.`);
     else if (ds >= 10) sum.push(`A segunda metade foi ${ds} s/km mais lenta. Comece um pouco mais devagar para chegar inteiro.`);
     else sum.push('Ritmo bem distribuído entre as duas metades.');

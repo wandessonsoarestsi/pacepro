@@ -516,3 +516,11 @@ body.noscroll{overflow:hidden}
 .vs-opt input{width:20px;height:20px;flex:none;margin:0;accent-color:var(--ink,#111)}
 .vs-opt span{display:flex;flex-direction:column;gap:2px;min-width:0}
 .vs-opt b{font-size:15px}.vs-opt small{font-size:12.5px;color:var(--muted,#6b7280);line-height:1.3}
+
+/* Imagem do percurso */
+.istudio .is-stage{aspect-ratio:1080/1350;width:min(100%,360px,calc((100dvh - 330px) * 1080 / 1350));background:#F2F3F5;transition:aspect-ratio .2s}
+.istudio .is-stage canvas{object-fit:contain}
+.is-seg{display:grid;grid-template-columns:1fr 1fr;gap:4px;width:min(100%,340px);padding:4px;border-radius:14px;background:var(--sunk)}
+.is-seg button{border:0;background:none;font:inherit;font-weight:700;font-size:14px;padding:9px 8px;border-radius:10px;color:var(--muted);cursor:pointer}
+.is-seg button[aria-pressed="true"]{background:var(--card);color:var(--fg);box-shadow:var(--shadow)}
+.rt-image{margin-top:8px}

@@ -20,6 +20,7 @@ aparelho (com backup em Ajustes) e a conexão com o Strava fica num cookie cript
 - Clima no horário do treino (Open-Meteo) com ajuste de ritmo pelo calor.
 - Volume semanal com a relação de carga dos últimos 7 dias contra os últimos 28.
 - Resumo da semana, calculadora de ritmo, cadência com metrônomo e cartões para compartilhar.
+- Imagem do percurso para compartilhar: mapa claro ou arte da rota (sem mapa), feed ou stories, com momentos marcados, corredor fantasma (melhor vez no mesmo percurso), comparação com o mesmo treino de semanas atrás e previsão de prova.
 - Comparação de cada treino com os treinos iguais anteriores (ritmo e FC da parte principal).
 - Dia da prova: horários a partir da largada, checklist que dá para marcar e tela da prova com ritmo km a km.
 - Depois da prova: semana de recuperação e próximo objetivo escolhido por você.

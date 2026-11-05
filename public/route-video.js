@@ -329,5 +329,5 @@
     return { close };
   }
 
-  root.RouteVideo = { open };
+  root.RouteVideo = { open, loadMapLibre, STYLE };
 })(window);

@@ -577,6 +577,16 @@
     for (const r of prev.slice(0, 40)) { try { if (RI.sameRoute(A, decodePoly(r.poly))) return r; } catch (e) {} }
     return null;
   }
+  // Melhor corrida anterior no mesmo percurso (menor ritmo médio) e quantas vezes ele foi feito.
+  function bestOnRoute(id) {
+    const cur = runs.find(r => String(r.stravaId) === String(id));
+    if (!cur || !cur.poly || cur.trainer) return null;
+    let A0; try { A0 = decodePoly(cur.poly); } catch (e) { return null; }
+    const same = runs.filter(r => r.poly && !r.trainer && r.stravaId !== cur.stravaId && r.km > 0 && (r.date < cur.date || (r.date === cur.date && r.stravaId < cur.stravaId)))
+      .sort((a, b) => b.date.localeCompare(a.date)).slice(0, 60).filter(r => { try { return RI.sameRoute(A0, decodePoly(r.poly)); } catch (e) { return false; } });
+    if (!same.length) return null;
+    return { run: same.reduce((a, b) => (b.sec / b.km < a.sec / a.km ? b : a)), count: same.length };
+  }
   const cssVar = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
   const RM = {};
   // Monta o mapa no lugar de "slot". key separa o mapa do card de análise do mapa da tela da corrida.
@@ -637,18 +647,18 @@
     const pts = s.lat.map((la, i) => [la, s.lon[i]]);
     const moments = [];
     const at = i => pts[Math.max(0, Math.min(s.n - 1, i))];
-    if (ins.fastestKm) moments.push({ ico: 'K', cls: 'k', i: ins.fastestKm.i0, i1: ins.fastestKm.i1, t: 'Km mais rápido', d: `km ${ins.fastestKm.k} em ${RI.fmtPace(ins.fastestKm.sec)}` });
-    if (ins.peak) moments.push({ ico: '⚡', cls: 'v', i: ins.peak.i, t: 'Pico de velocidade', d: `${RI.fmtPace(ins.peak.pace)}/km (${(ins.peak.v * 3.6).toFixed(1).replace('.', ',')} km/h) no km ${RI.kmTxt(s.d[ins.peak.i])}` });
-    if (ins.maxHr) moments.push({ ico: '♥', cls: 'h', i: ins.maxHr.i, t: 'FC mais alta', d: `${ins.maxHr.hr} bpm no km ${RI.kmTxt(s.d[ins.maxHr.i])}` });
-    if (ins.climb) moments.push({ ico: '▲', cls: 'c', i: ins.climb.i0, i1: ins.climb.i1, t: 'Maior subida', d: `+${Math.round(ins.climb.gain)} m em ${Math.round(ins.climb.dist)} m (${Math.round(ins.climb.grade * 100)}%) a partir do km ${RI.kmTxt(s.d[ins.climb.i0])}` });
-    if (ins.fatigue) moments.push({ ico: '!', cls: 'f', i: ins.fatigue.i, t: `Aqui você cansou (km ${RI.kmTxt(ins.fatigue.dist)})`, d: ins.fatigue.tip });
+    if (ins.fastestKm) moments.push({ ico: 'K', cls: 'k', i: ins.fastestKm.i0, i1: ins.fastestKm.i1, t: 'Km mais rápido', d: `km ${ins.fastestKm.k} em ${RI.fmtPace(ins.fastestKm.sec)}`, s: `Km mais rápido ${RI.fmtPace(ins.fastestKm.sec)}` });
+    if (ins.peak) moments.push({ ico: '⚡', cls: 'v', i: ins.peak.i, t: 'Pico de velocidade', s: `Pico ${RI.fmtPace(ins.peak.pace)}/km`, d: `${RI.fmtPace(ins.peak.pace)}/km (${(ins.peak.v * 3.6).toFixed(1).replace('.', ',')} km/h) no km ${RI.kmTxt(s.d[ins.peak.i])}` });
+    if (ins.maxHr) moments.push({ ico: '♥', cls: 'h', i: ins.maxHr.i, t: 'FC mais alta', s: `FC máx. ${ins.maxHr.hr}`, d: `${ins.maxHr.hr} bpm no km ${RI.kmTxt(s.d[ins.maxHr.i])}` });
+    if (ins.climb) moments.push({ ico: '▲', cls: 'c', i: ins.climb.i0, i1: ins.climb.i1, t: 'Maior subida', s: `Subida +${Math.round(ins.climb.gain)} m`, d: `+${Math.round(ins.climb.gain)} m em ${Math.round(ins.climb.dist)} m (${Math.round(ins.climb.grade * 100)}%) a partir do km ${RI.kmTxt(s.d[ins.climb.i0])}` });
+    if (ins.fatigue) moments.push({ ico: '!', cls: 'f', i: ins.fatigue.i, t: `Aqui você cansou (km ${RI.kmTxt(ins.fatigue.dist)})`, s: 'Aqui você cansou', d: ins.fatigue.tip });
     if (ins.ghost && ins.ghost.bestI != null && ins.ghost.bestLead > 0) moments.push({ ico: '👻', cls: 'g', i: ins.ghost.bestI, t: 'Maior vantagem sobre o fantasma', d: `${ins.ghost.bestLead} s à frente de ${ddmm(g.date)} no km ${RI.kmTxt(s.d[ins.ghost.bestI])}` });
     const repRows = ins.reps.map(r => ({ ico: String(r.n), cls: 'r ' + r.tone, i: r.i0, i1: r.i1, t: `Tiro ${r.n} · ${Math.round(r.dist / 10) * 10} m`, d: `${RI.fmtPace(r.pace)}/km${r.target ? ` (alvo ${RI.fmtPace(r.target)})` : ''}${r.hr ? ` · FC ${Math.round(r.hr)}` : ''}`, tone: r.tone }));
     const gh = ins.ghost;
     const ghostHtml = gh ? `<div class="rt-ghost"><b>${gh.final < 0 ? `${-gh.final} s mais rápido` : gh.final > 0 ? `${gh.final} s mais lento` : 'Mesmo tempo'}</b> que em ${ddmm(g.date)} no mesmo percurso` +
       (gh.perKm.length ? `<div class="rt-kms">${gh.perKm.map(k => `<span class="${k.diff < 0 ? 'good' : k.diff > 0 ? 'bad' : ''}">km ${k.k} ${k.diff > 0 ? '+' : k.diff < 0 ? '−' : '±'}${Math.abs(k.diff)}s</span>`).join('')}</div>` : '') + '</div>' : '';
     node.innerHTML = `<div class="rt-head"><span class="eyebrow">Mapa da corrida</span>${modes.length > 1 ? `<div class="rt-modes" role="group" aria-label="Cor do percurso">${modes.map(([k, t]) => `<button type="button" data-m="${k}" aria-pressed="${k === mode}">${t}</button>`).join('')}</div>` : ''}</div>` +
-      `<div class="rt-map"></div><div class="rt-legend"></div>` + (window.RouteVideo ? '<button type="button" class="btn wide rt-video">Gerar percurso dinâmico</button>' : '') + ghostHtml +
+      `<div class="rt-map"></div><div class="rt-legend"></div>` + (window.RouteVideo ? '<button type="button" class="btn wide rt-video">Gerar percurso dinâmico</button>' : '') + (window.RouteImage ? '<button type="button" class="btn ghost wide rt-image">Gerar imagem do percurso</button>' : '') + ghostHtml +
       `<div class="rt-list">${moments.map((m, k) => `<button type="button" class="rt-row" data-k="${k}"><span class="rt-pin ${m.cls}">${m.ico}</span><span><b>${esc(m.t)}</b><small>${esc(m.d)}</small></span></button>`).join('')}</div>` +
       (repRows.length ? `<div class="rt-reps"><span class="eyebrow">Tiros no mapa</span><div class="rt-rgrid">${repRows.map((m, k) => `<button type="button" class="rt-row rt-rep" data-k="${moments.length + k}" aria-label="${esc(m.t + ': ' + m.d)}"><span class="rt-pin ${m.cls}">${m.ico}</span><b>${RI.fmtPace(ins.reps[k].pace)}</b></button>`).join('')}</div>${ins.reps.some(r => r.target) ? `<small class="muted">Verde no alvo, laranja perto, vermelho abaixo. Alvo ${RI.fmtPace(ins.reps.find(r => r.target).target)}/km.</small>` : ''}</div>` : '');
     const el = node.querySelector('.rt-map');
@@ -662,13 +672,14 @@
     const sp30 = RI.rolling(s, ins.sp, 30);
     function colors() {
       if (mode === 'effort') return s.hr.map(h => (h ? ZC[zoneOf(h, Z)] : ZC[0]));
-      if (mode === 'ghost') {
-        const dl = gh.delta, w = Math.max(2, Math.round(s.n / 60));
-        return dl.map((x, i) => { const a = dl[Math.max(0, i - w)], b = dl[Math.min(s.n - 1, i + w)]; if (x == null || a == null || b == null) return ZC[0]; const r = (b - a); return r < -1 ? ZC[2] : r > 1 ? ZC[4] : ZC[0]; });
-      }
+      if (mode === 'ghost') return ghostColors(gh.delta);
       const v = sp30.filter(x => x).sort((a, b) => a - b), q = f => v[Math.floor(f * (v.length - 1))];
       const cuts = [q(.2), q(.4), q(.6), q(.8)], pal = [ZC[1], cssVar('--c1'), ZC[2], ZC[3], ZC[4]];
       return sp30.map(x => pal[x == null ? 0 : cuts.filter(c => x > c).length]);
+    }
+    function ghostColors(dl) {
+      const w = Math.max(2, Math.round(s.n / 60));
+      return dl.map((x, i) => { const a = dl[Math.max(0, i - w)], b = dl[Math.min(s.n - 1, i + w)]; if (x == null || a == null || b == null) return ZC[0]; const r = (b - a); return r < -1 ? ZC[2] : r > 1 ? ZC[4] : ZC[0]; });
     }
     function paint() {
       if (colorLayer) colorLayer.remove();
@@ -704,6 +715,51 @@
       mk.openPopup(); el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     });
     node.querySelectorAll('.rt-modes button').forEach(b => b.onclick = () => { mode = b.dataset.m; store.set('pp.rmode', mode); paint(); });
+    const ib = node.querySelector('.rt-image');
+    if (ib) ib.onclick = async () => {
+      if (ib.disabled) return; ib.disabled = true; const t0 = ib.textContent; ib.textContent = 'Preparando…';
+      try { window.RouteImage.open(await imageData()); } catch (e) { showToast('Não consegui preparar a imagem.'); }
+      ib.disabled = false; ib.textContent = t0;
+    };
+    async function imageData() {
+      const run = runs.find(r => String(r.stravaId) === String(rm.id)) || {};
+      const pd = plan && run.date && dayAt(run.date), dt = run.date ? D(run.date) : null;
+      const PC = { k: cssVar('--c1'), v: cssVar('--c2'), h: cssVar('--bad'), c: cssVar('--c3'), f: cssVar('--warn') };
+      const im = moments.filter(m => m.cls !== 'g').map(m => ({ i: m.i1 != null ? Math.round((m.i + m.i1) / 2) : m.i, ico: m.ico, color: PC[m.cls] || '#888', t: m.t, s: m.s }));
+      if (ins.reps.length) { const r0 = ins.reps[0], avgP = ins.reps.reduce((a, r) => a + r.pace, 0) / ins.reps.length; im.push({ i: r0.i0, ico: String(ins.reps.length), color: cssVar('--c2'), s: `${ins.reps.length} tiros · ${RI.fmtPace(avgP)}` }); }
+      const km = s.d[s.n - 1] / 1000, sec = s.t[s.n - 1] - s.t[0];
+      const legend = mode === 'effort' ? Z.z.map((z, k) => [ZC[k], `Z${k + 1}`]) : mode === 'ghost' ? [[ZC[2], 'ganhando tempo'], [ZC[4], 'perdendo tempo']] : [[ZC[1], 'mais lento'], [ZC[4], 'mais rápido']];
+      // Fantasma: a melhor vez no mesmo percurso
+      let ghost = null;
+      const bg = bestOnRoute(rm.id);
+      if (bg) {
+        try {
+          const p = await getStreams(bg.run.stravaId);
+          if (p && p.n > 5) {
+            const G = RI.ghost(s, p), T = sec;
+            let markDist = null, markLabel = '', gapM = '';
+            if (G.final < 0) { const gd = RI.distAt(p, T), m = Math.round(Math.max(0, G.lim - gd)); markDist = Math.min(gd, G.lim); markLabel = m ? `Fantasma ${m} m atrás` : 'Fantasma'; gapM = m ? `ele ficou ${m} m atrás` : ''; }
+            else if (G.final > 0) { const yd = RI.distAt(s, p.t[p.n - 1] - p.t[0]), m = Math.round(Math.max(0, G.lim - yd)); markDist = G.lim; markLabel = 'Fantasma chegou'; gapM = m ? `você estava ${m} m atrás` : ''; }
+            ghost = { date: ddmm(bg.run.date), short: bg.count > 1 ? 'sua melhor' : 'a última vez', label: bg.count > 1 ? 'sua melhor vez neste percurso' : 'sua última vez neste percurso', final: G.final, perKm: G.perKm, colors: ghostColors(G.delta), legend: [[ZC[2], 'ganhando tempo'], [ZC[4], 'perdendo tempo']], markDist, markLabel, gapM };
+          }
+        } catch (e) {}
+      }
+      // Previsão de prova pelo que o app estima no dia deste treino
+      let predict = null;
+      const est = run.date && estimateAt(run.date);
+      if (est) {
+        const dk = String(distKm()).replace('.', ','), goal = plan ? goalSec() : 0, diff = Math.round(est.sec - goal);
+        const proj = plan && raceISO() > run.date ? A.project(est.sec, run.date, raceISO()) : 0;
+        predict = { short: `${dk} km em ${A.fmtTime(est.sec)}`, note: goal ? (diff <= 0 ? `meta de ${A.fmtTime(goal)} batida` : `faltam ${diff >= 60 ? A.fmtTime(diff) : diff + ' s'} para ${A.fmtTime(goal)}`) : (run.date === today ? 'pelo seu treino de hoje' : `em ${ddmm(run.date)}`), big: `${run.date === today ? 'Hoje você faria' : 'Neste dia você faria'} ${dk} km em ${A.fmtTime(est.sec)}`,
+          small: goal ? (diff <= 0 ? `Já abaixo da meta de ${A.fmtTime(goal)}` : `Faltam ${diff >= 60 ? A.fmtTime(diff) : diff + ' s'} para a meta de ${A.fmtTime(goal)}`) + (proj ? ` · no dia da prova: ${A.fmtTime(proj)}` : '') : '',
+          ok: goal && diff <= 0, pct: goal ? Math.min(1, goal / est.sec) : null };
+      }
+      return {
+        lat: s.lat, lon: s.lon, dist: s.d, time: s.t, colors: colors(), legend, moments: im, ghost, compare: run.date ? compareFor(run) : null, predict,
+        meta: { title: (pd && isRunType(pd.type) ? pd.title : run.name) || 'Corrida', date: dt ? `${dt.getDate()} de ${MON[dt.getMonth()]}` : '', fileDate: run.date,
+          km: km.toFixed(2).replace('.', ','), time: A.fmtTime(run.sec || sec), pace: A.fmtPace((run.sec || sec) / (run.km || km)), hr: run.hr }
+      };
+    }
     const vb = node.querySelector('.rt-video');
     if (vb) vb.onclick = () => {
       const run = runs.find(r => String(r.stravaId) === String(rm.id)) || {};
@@ -1508,7 +1564,8 @@
   $('shareProg').onclick = () => shareProgress();
 
   /* ---------- Comparar com treinos iguais ---------- */
-  function similarPast(date) {
+  function similarPast(date, o) {
+    o = o || {}; const until = o.gap ? addDays(date, -o.gap) : null;
     const a = done[date] && done[date].analysis; if (!a) return [];
     const lab = x => x.metrics.work ? x.metrics.work.label : '';
     const same = b => {
@@ -1518,8 +1575,8 @@
       if (a.type === 'easy') return Math.abs(b.metrics.distKm - a.metrics.distKm) <= Math.max(0.8, a.metrics.distKm * 0.25);
       return true;
     };
-    return Object.entries(done).filter(([d, v]) => d < date && v && v.analysis && v.analysis.metrics && same(v.analysis))
-      .sort((x, y) => y[0].localeCompare(x[0])).slice(0, 3).map(([d, v]) => ({ date: d, a: v.analysis }));
+    return Object.entries(done).filter(([d, v]) => d < date && (!until || d <= until) && v && v.analysis && v.analysis.metrics && same(v.analysis))
+      .sort((x, y) => y[0].localeCompare(x[0])).slice(0, o.n || 3).map(([d, v]) => ({ date: d, a: v.analysis }));
   }
   const workOf = a => a.metrics.work && a.metrics.work.pace ? { pace: a.metrics.work.pace, hr: a.metrics.work.hr || a.metrics.hr } : { pace: a.metrics.pace, hr: a.metrics.hr };
   function compareHtml(date) {
@@ -1527,7 +1584,15 @@
     if (!prev.length || !a.metrics.pace) return '';
     const c = workOf(a), p = workOf(prev[0].a);
     const dp = Math.round(c.pace - p.pace), dh = c.hr && p.hr ? c.hr - p.hr : null;
+    const { msg, tone } = cmpVerdict(dp, dh);
     const what = ['test', 'race'].includes(a.type) ? 'teste ou prova' : a.metrics.work ? a.metrics.work.label : a.type === 'easy' ? `leve de ~${Math.round(a.metrics.distKm)} km` : 'treino igual';
+    const sign = n => n > 0 ? `+${n}` : n < 0 ? `−${-n}` : '0';
+    const row = (d, x, cur) => { const w = workOf(x); return `<tr${cur ? ' class="cur"' : ''}><td>${cur ? 'Hoje' : ddmm(d)}</td><td>${w.pace ? A.fmtPace(w.pace) : '–'}${cur || !w.pace ? '' : ` <small class="${c.pace - w.pace <= -3 ? 'good' : c.pace - w.pace >= 3 ? 'bad' : 'muted'}">${sign(Math.round(c.pace - w.pace))}s</small>`}</td><td>${w.hr || '–'}</td><td>${x.metrics.distKm.toFixed(1).replace('.', ',')} km</td></tr>`; };
+    return `<div class="cmp"><span class="eyebrow">Comparado com ${prev.length > 1 ? 'treinos iguais' : 'o último treino igual'} · ${esc(what)}</span>` +
+      `<p class="msg ${tone}">${esc(msg)}</p><div class="tbl"><table><thead><tr><th>Dia</th><th>Ritmo</th><th>FC</th><th>Dist.</th></tr></thead><tbody>${row(date, a, true)}${prev.map(x => row(x.date, x.a)).join('')}</tbody></table></div>` +
+      `<p class="muted small">${a.metrics.work ? 'Ritmo e FC da parte principal do treino.' : 'Ritmo e FC médios.'} Hoje vs. cada dia (negativo = hoje mais rápido).</p></div>`;
+  }
+  function cmpVerdict(dp, dh) {
     let msg, tone = 'info';
     if (dp <= -3 && (dh == null || dh <= 2)) { msg = `${-dp} s/km mais rápido${dh != null ? (dh < -1 ? ` com FC ${-dh} mais baixa` : ' com a mesma FC') : ''}. Evolução clara.`; tone = 'good'; }
     else if (Math.abs(dp) < 3 && dh != null && dh <= -3) { msg = `Mesmo ritmo com FC ${-dh} mais baixa. O corpo está se adaptando.`; tone = 'good'; }
@@ -1535,11 +1600,30 @@
     else if (dp >= 3 && (dh == null || dh >= -2)) { msg = `${dp} s/km mais lento que da última vez. Calor, sono e cansaço pesam; um dia ruim não apaga a evolução.`; tone = 'warn'; }
     else if (dp >= 3) msg = `${dp} s/km mais lento, com FC ${-dh} mais baixa. Pegou mais leve.`;
     else msg = 'Bem parecido com da última vez.';
-    const sign = n => n > 0 ? `+${n}` : n < 0 ? `−${-n}` : '0';
-    const row = (d, x, cur) => { const w = workOf(x); return `<tr${cur ? ' class="cur"' : ''}><td>${cur ? 'Hoje' : ddmm(d)}</td><td>${w.pace ? A.fmtPace(w.pace) : '–'}${cur || !w.pace ? '' : ` <small class="${c.pace - w.pace <= -3 ? 'good' : c.pace - w.pace >= 3 ? 'bad' : 'muted'}">${sign(Math.round(c.pace - w.pace))}s</small>`}</td><td>${w.hr || '–'}</td><td>${x.metrics.distKm.toFixed(1).replace('.', ',')} km</td></tr>`; };
-    return `<div class="cmp"><span class="eyebrow">Comparado com ${prev.length > 1 ? 'treinos iguais' : 'o último treino igual'} · ${esc(what)}</span>` +
-      `<p class="msg ${tone}">${esc(msg)}</p><div class="tbl"><table><thead><tr><th>Dia</th><th>Ritmo</th><th>FC</th><th>Dist.</th></tr></thead><tbody>${row(date, a, true)}${prev.map(x => row(x.date, x.a)).join('')}</tbody></table></div>` +
-      `<p class="muted small">${a.metrics.work ? 'Ritmo e FC da parte principal do treino.' : 'Ritmo e FC médios.'} Hoje vs. cada dia (negativo = hoje mais rápido).</p></div>`;
+    return { msg, tone };
+  }
+  // Para a imagem: o mesmo treino feito pelo menos 10 dias antes (pela análise do plano ou, fora dele, pela distância).
+  function compareFor(run) {
+    const date = run.date, st = done[date], a = st && st.analysis && String(st.activityId) === String(run.stravaId) ? st.analysis : null;
+    let cur, old, oldDate, oldKm;
+    if (a && a.metrics.pace) {
+      const p = similarPast(date, { gap: 10, n: 1 })[0];
+      if (p) { cur = workOf(a); old = workOf(p.a); oldDate = p.date; oldKm = p.a.metrics.distKm; }
+    }
+    if (!old && run.km && !run.trainer) {
+      const r = runs.filter(x => !x.trainer && x.km && x.stravaId !== run.stravaId && x.date <= addDays(date, -10) && Math.abs(x.km - run.km) <= Math.max(0.8, run.km * 0.2)).sort((x, y) => y.date.localeCompare(x.date))[0];
+      if (r) { cur = { pace: run.sec / run.km, hr: run.hr }; old = { pace: r.sec / r.km, hr: r.hr }; oldDate = r.date; oldKm = r.km; }
+    }
+    if (!old || !cur.pace || !old.pace) return null;
+    const days = Math.round((D(date) - D(oldDate)) / 864e5), wk = Math.round(days / 7);
+    const dp = Math.round(cur.pace - old.pace), dh = cur.hr && old.hr ? cur.hr - old.hr : null;
+    const sg = (v, u) => (v > 0 ? `+${v}${u}` : v < 0 ? `−${-v}${u}` : '');
+    const curKm = a ? a.metrics.distKm : run.km;
+    const v = cmpVerdict(dp, dh);
+    return { when: wk >= 2 ? `há ${wk} semanas` : `há ${days} dias`, date: ddmm(oldDate), msg: v.msg, tone: v.tone,
+      rows: [{ l: 'Ritmo', now: A.fmtPace(cur.pace), then: A.fmtPace(old.pace), diff: sg(dp, 's'), good: dp <= -3 ? true : dp >= 3 ? false : null },
+        { l: 'FC média', now: cur.hr ? String(cur.hr) : '–', then: old.hr ? String(old.hr) : '–', diff: dh != null ? sg(dh, '') : '', good: dh != null && dh <= -3 ? true : null },
+        { l: 'Distância', now: curKm.toFixed(1).replace('.', ',') + ' km', then: oldKm.toFixed(1).replace('.', ',') + ' km', diff: '', good: null }] };
   }
 
   /* ---------- Dia da prova ---------- */

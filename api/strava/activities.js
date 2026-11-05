@@ -16,7 +16,7 @@ module.exports = async (req, res) => {
       id: a.id, name: a.name, start: a.start_date_local, distance: a.distance,
       moving_time: a.moving_time, elapsed_time: a.elapsed_time,
       average_heartrate: a.average_heartrate || null, average_cadence: a.average_cadence || null,
-      trainer: !!a.trainer
+      trainer: !!a.trainer, poly: (a.map && a.map.summary_polyline) || null
     })));
   } catch (e) { fail(res, e); }
 };

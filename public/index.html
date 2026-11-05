@@ -50,12 +50,20 @@
         <div class="card workout" id="workout"></div>
         <div class="card analysis" id="analysis" hidden></div>
         <a class="card summary" id="summaryCard" href="#progresso" aria-label="Ver progresso">
-          <div class="summary-list">
-            <div class="srow"><span class="dot c1"></span><div><b id="sDays">–</b><small>para a prova</small></div></div>
-            <div class="srow"><span class="dot c2"></span><div><b id="sWeek">–</b><small>treinos da semana</small></div></div>
-            <div class="srow"><span class="dot c3"></span><div><b id="sProj">–</b><small>projeção na prova</small></div></div>
+          <div class="sm">
+            <div class="smh"><span class="lbl">Ciclo até a prova</span><b id="sDays">–</b></div>
+            <div class="cycle" id="sCycle" aria-hidden="true"></div>
+            <small class="muted" id="sCycleSub">–</small>
           </div>
-          <svg class="rings" id="rings" viewBox="0 0 120 120" aria-hidden="true"></svg>
+          <div class="sm">
+            <div class="smh"><span class="lbl">Treinos da semana</span><b id="sWeek">–</b></div>
+            <div class="wpills" id="sPills"></div>
+          </div>
+          <div class="sm">
+            <div class="smh"><span class="lbl">Projeção na prova</span><b id="sProj">–</b></div>
+            <svg class="gauge" id="sGauge" viewBox="0 0 300 40" aria-hidden="true"></svg>
+            <small class="muted" id="sProjSub">–</small>
+          </div>
           <span class="more" aria-hidden="true">›</span>
         </a>
         <div class="card" id="dietCard" hidden></div>

@@ -587,6 +587,13 @@
     if (!same.length) return null;
     return { run: same.reduce((a, b) => (b.sec / b.km < a.sec / a.km ? b : a)), count: same.length };
   }
+  // A imagem do percurso carrega sob demanda (funciona mesmo se o celular guardou uma página antiga).
+  let riP = null;
+  function loadRouteImage() {
+    if (window.RouteImage) return Promise.resolve();
+    if (!riP) riP = new Promise((ok, no) => { const sc = document.createElement('script'); sc.src = '/route-image.js?v=' + Date.now(); sc.onload = ok; sc.onerror = () => { riP = null; no(new Error('imagem')); }; document.head.appendChild(sc); });
+    return riP;
+  }
   const cssVar = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
   const RM = {};
   // Monta o mapa no lugar de "slot". key separa o mapa do card de análise do mapa da tela da corrida.
@@ -658,7 +665,7 @@
     const ghostHtml = gh ? `<div class="rt-ghost"><b>${gh.final < 0 ? `${-gh.final} s mais rápido` : gh.final > 0 ? `${gh.final} s mais lento` : 'Mesmo tempo'}</b> que em ${ddmm(g.date)} no mesmo percurso` +
       (gh.perKm.length ? `<div class="rt-kms">${gh.perKm.map(k => `<span class="${k.diff < 0 ? 'good' : k.diff > 0 ? 'bad' : ''}">km ${k.k} ${k.diff > 0 ? '+' : k.diff < 0 ? '−' : '±'}${Math.abs(k.diff)}s</span>`).join('')}</div>` : '') + '</div>' : '';
     node.innerHTML = `<div class="rt-head"><span class="eyebrow">Mapa da corrida</span>${modes.length > 1 ? `<div class="rt-modes" role="group" aria-label="Cor do percurso">${modes.map(([k, t]) => `<button type="button" data-m="${k}" aria-pressed="${k === mode}">${t}</button>`).join('')}</div>` : ''}</div>` +
-      `<div class="rt-map"></div><div class="rt-legend"></div>` + (window.RouteVideo ? '<button type="button" class="btn wide rt-video">Gerar percurso dinâmico</button>' : '') + (window.RouteImage ? '<button type="button" class="btn ghost wide rt-image">Gerar imagem do percurso</button>' : '') + ghostHtml +
+      `<div class="rt-map"></div><div class="rt-legend"></div>` + (window.RouteVideo ? '<button type="button" class="btn wide rt-video">Gerar percurso dinâmico</button>' : '') + '<button type="button" class="btn ghost wide rt-image">Gerar imagem do percurso</button>' + ghostHtml +
       `<div class="rt-list">${moments.map((m, k) => `<button type="button" class="rt-row" data-k="${k}"><span class="rt-pin ${m.cls}">${m.ico}</span><span><b>${esc(m.t)}</b><small>${esc(m.d)}</small></span></button>`).join('')}</div>` +
       (repRows.length ? `<div class="rt-reps"><span class="eyebrow">Tiros no mapa</span><div class="rt-rgrid">${repRows.map((m, k) => `<button type="button" class="rt-row rt-rep" data-k="${moments.length + k}" aria-label="${esc(m.t + ': ' + m.d)}"><span class="rt-pin ${m.cls}">${m.ico}</span><b>${RI.fmtPace(ins.reps[k].pace)}</b></button>`).join('')}</div>${ins.reps.some(r => r.target) ? `<small class="muted">Verde no alvo, laranja perto, vermelho abaixo. Alvo ${RI.fmtPace(ins.reps.find(r => r.target).target)}/km.</small>` : ''}</div>` : '');
     const el = node.querySelector('.rt-map');
@@ -718,7 +725,7 @@
     const ib = node.querySelector('.rt-image');
     if (ib) ib.onclick = async () => {
       if (ib.disabled) return; ib.disabled = true; const t0 = ib.textContent; ib.textContent = 'Preparando…';
-      try { window.RouteImage.open(await imageData()); } catch (e) { showToast('Não consegui preparar a imagem.'); }
+      try { await loadRouteImage(); window.RouteImage.open(await imageData()); } catch (e) { showToast('Não consegui preparar a imagem. Confira a internet.', true); }
       ib.disabled = false; ib.textContent = t0;
     };
     async function imageData() {
@@ -1748,7 +1755,7 @@
   // Versão = impressão digital dos arquivos do site. Muda a cada publicação, sem depender de configuração na Vercel.
   async function fetchVer() {
     try {
-      const txt = await Promise.all(['/index.html', '/app.js', '/styles.css', '/analysis.js', '/plan-generator.js', '/plan-parser.js', '/route-map.js', '/route-video.js'].map(u => fetch(u, { cache: 'no-store' }).then(r => { if (!r.ok) throw new Error(); return r.text(); })));
+      const txt = await Promise.all(['/index.html', '/app.js', '/styles.css', '/analysis.js', '/plan-generator.js', '/plan-parser.js', '/route-map.js', '/route-video.js', '/route-image.js'].map(u => fetch(u, { cache: 'no-store' }).then(r => { if (!r.ok) throw new Error(); return r.text(); })));
       let h = 5381; const s = txt.join('\n');
       for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
       return (h >>> 0).toString(36).padStart(7, '0').slice(-7);

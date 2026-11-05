@@ -18,6 +18,11 @@ aparelho (com backup em Ajustes) e a conexão com o Strava fica num cookie cript
 - Clima no horário do treino (Open-Meteo) com ajuste de ritmo pelo calor.
 - Volume semanal com a relação de carga dos últimos 7 dias contra os últimos 28.
 - Resumo da semana, calculadora de ritmo, cadência com metrônomo e cartões para compartilhar.
+- Comparação de cada treino com os treinos iguais anteriores (ritmo e FC da parte principal).
+- Dia da prova: horários a partir da largada, checklist que dá para marcar e tela da prova com ritmo km a km.
+- Depois da prova: semana de recuperação e próximo objetivo escolhido por você.
+- Calendário de provas (aba Provas), com exportação para a agenda (.ics) e plano montado para cada prova.
+- Aviso e botão de atualizar quando sai uma versão nova (`/api/version`).
 
 ## Estrutura
 
@@ -26,7 +31,7 @@ aparelho (com backup em Ajustes) e a conexão com o Strava fica num cookie cript
   - `plan-parser.js` — lê planos em Markdown (gerados ou importados).
   - `analysis.js` — análise dos treinos e estimativa de tempo.
   - `plano.md` — plano de exemplo.
-- `api/` — funções do Vercel da integração com o Strava.
+- `api/` — funções do Vercel: integração com o Strava e versão publicada.
 
 ## Configuração
 

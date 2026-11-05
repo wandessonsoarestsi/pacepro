@@ -45,6 +45,7 @@
       if (!work.length) work = splits.slice(1, Math.max(1, splits.length - 1)).map(s => ({ pace: s.pace, hr: s.hr, time: s.pace, dist: 1000 }));
       const wp = work.length ? avg(work.map(w => w.pace)) : pace;
       const wh = work.filter(w => w.hr).length ? Math.round(avg(work.filter(w => w.hr).map(w => w.hr))) : hr;
+      if (wp) res.metrics.work = { pace: wp, hr: wh, label: 'bloco de limiar' };
       if (target) {
         const diff = wp - target;
         if (diff < -15) { add(`Bloco principal a ${fmtPace(wp)}/km, ${Math.round(-diff)} s mais rápido que o alvo de ${fmtPace(target)}. Rápido demais para um limiar.`, 'warn'); worse('warn'); }
@@ -102,6 +103,7 @@
           const rd = Math.round(main.dist / 50) * 50, rp = avg(main.items.map(i => i.pace));
           const adj = rd >= 1000 ? 8 : rd >= 800 ? 12 : rd >= 600 ? 15 : 20;
           res.estimateSec = (rp + adj) * (opts.distanceKm || 5); res.estimateBasis = `tiros de ${rd} m + ${adj} s/km`;
+          const mh = main.items.filter(i => i.hr); res.metrics.work = { pace: rp, hr: mh.length ? Math.round(avg(mh.map(i => i.hr))) : null, label: `tiros de ${rd} m` };
         }
       } else {
         add('Não achei os tiros separados. Marque uma volta no relógio a cada tiro para a análise ficar completa.', 'warn'); worse('warn');

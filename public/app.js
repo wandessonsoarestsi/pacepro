@@ -85,6 +85,9 @@
   function saveNow() {
     store.set(userKey('state'), { plan_md: planMd, done, extra, updated_at: new Date().toISOString() });
   }
+  // Salva na hora ao fechar ou trocar de app, para não perder a última mudança.
+  window.addEventListener('pagehide', () => { if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; saveNow(); } });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && saveTimer) { clearTimeout(saveTimer); saveTimer = null; saveNow(); } });
   function loadState() {
     let row = store.get(userKey('state'), null);
     if (!row) { // versão antiga do site
@@ -107,7 +110,7 @@
   const goalSec = () => (plan && plan.goalSec) || 1800;
   const distKm = () => (plan && plan.distanceKm) || 5;
   const firstDay = () => plan ? plan.days[0].date : today;
-  const lastDay = () => plan ? plan.days[plan.days.length - 1].date : today;
+  const lastDay = () => { if (!plan) return today; const l = plan.days[plan.days.length - 1].date, r = addDays(raceISO(), 7); let x = l > r ? l : r; if (today > x) x = today; return x; };
   // Antes do início do plano, o app abre em hoje e mostra quanto falta.
   const minDay = () => (today < firstDay() ? today : firstDay());
   function clampSelected() {
@@ -149,7 +152,7 @@
   }
 
   /* ---------- Topo e navegação ---------- */
-  const VIEW_TITLE = { hoje: 'Hoje', plano: 'Plano', progresso: 'Progresso', ajustes: 'Ajustes' };
+  const VIEW_TITLE = { hoje: 'Hoje', plano: 'Plano', progresso: 'Progresso', provas: 'Provas', ajustes: 'Ajustes' };
   let view = 'hoje';
   const mondayOf = s => addDays(s, -((D(s).getDay() + 6) % 7));
   function renderHeader() {
@@ -157,10 +160,11 @@
     let title = VIEW_TITLE[view], sub = '';
     if (view === 'hoje' && plan) {
       title = selected === today ? 'Hoje' : selected === addDays(today, 1) ? 'Amanhã' : selected === addDays(today, -1) ? 'Ontem' : WDL[d.getDay()];
-      const day = dayOf(selected);
-      sub = `${WDL[d.getDay()]}, ${d.getDate()} de ${MON[d.getMonth()]}${day ? ` · semana ${day.week} de ${plan.weeks.length}` : ''}`;
+      const day = dayAt(selected);
+      sub = `${WDL[d.getDay()]}, ${d.getDate()} de ${MON[d.getMonth()]}${day && day.week ? ` · semana ${day.week} de ${plan.weeks.length}` : day && day.recovery ? ` · recuperação, dia ${day.recovery} de 7` : ''}`;
     } else if (view === 'plano' && plan) sub = `${plan.weeks.length} semanas · prova em ${ddmm(raceISO())}`;
     else if (view === 'progresso' && plan) { const n = Math.max(0, Math.ceil((new Date(raceISO() + 'T05:30:00-03:00') - Date.now()) / 864e5)); sub = n ? `${n} dias para a prova` : 'Dia de prova'; }
+    else if (view === 'provas') { const n = allRaces().filter(r => r.date >= today).length; sub = n ? `${n} prova${n > 1 ? 's' : ''} pela frente` : 'Seu calendário de provas'; }
     else if (view === 'ajustes') sub = strava.connected ? 'Strava conectado' : 'Strava, plano e preferências';
     $('pageTitle').textContent = title;
     $('pageSub').textContent = sub;
@@ -178,7 +182,7 @@
     const LET = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
     let html = '';
     for (let i = 0; i < 7; i++) {
-      const dt = addDays(mon, i), x = dayOf(dt), off = dt < minDay() || dt > lastDay();
+      const dt = addDays(mon, i), x = dayAt(dt), off = dt < minDay() || dt > lastDay();
       const kind = !x ? 'none' : x.type === 'swim' ? 'swim' : x.type === 'rest' ? (x.gym ? 'gym' : 'rest') : x.type === 'race' ? 'race' : 'run';
       const mark = done[dt] ? '<i class="mk done"></i>' : `<i class="mk ${kind}${x && x.key && kind === 'run' ? ' key' : ''}"></i>`;
       html += `<button type="button" role="tab" class="wd${dt === today ? ' today' : ''}" data-d="${dt}" aria-selected="${dt === selected}"${off ? ' disabled' : ''} aria-label="${WDL[D(dt).getDay()]} ${ddmm(dt)}${x ? ', ' + esc(x.title) : ''}${done[dt] ? ', feito' : ''}"><span class="wl">${LET[D(dt).getDay()]}</span><span class="wn">${D(dt).getDate()}</span>${mark}</button>`;
@@ -198,7 +202,7 @@
     const race = new Date(raceISO() + 'T05:30:00-03:00');
     const ms = race - Date.now();
     const days = Math.max(0, Math.ceil(ms / 864e5));
-    $('sDays').textContent = ms <= 0 || raceISO() === today ? 'É hoje!' : days === 1 ? '1 dia' : `${days} dias`;
+    $('sDays').textContent = today > raceISO() ? 'Concluído' : ms <= 0 || raceISO() === today ? 'É hoje!' : days === 1 ? '1 dia' : `${days} dias`;
     const day = dayOf(selected);
     const wk = day ? plan.weeks.find(w => w.n === day.week) : null;
     const keyDays = wk ? wk.days.filter(x => x.type !== 'rest' && x.type !== 'swim') : [];
@@ -281,7 +285,7 @@
   const CHECK = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
 
   function renderWorkout() {
-    const day = dayOf(selected);
+    const day = dayAt(selected);
     const el = $('workout');
     if (!day && selected < firstDay()) {
       const n = Math.round((D(firstDay()) - D(selected)) / 864e5);
@@ -292,10 +296,11 @@
       $('goStart').onclick = () => { selected = firstDay(); renderAll(); };
       return;
     }
+    if (!day && selected > raceISO()) { el.innerHTML = `<div class="wk-top"><div><span class="eyebrow">Plano concluído</span><h3>Ciclo encerrado</h3></div></div><p class="muted">A semana de recuperação acabou. Defina o próximo objetivo logo abaixo e o app monta um plano novo.</p>`; $('analysis').hidden = true; return; }
     if (!day) { el.innerHTML = `<p class="muted">Sem treino planejado para este dia.</p>`; $('analysis').hidden = true; return; }
     const st = done[day.date];
     const isRun = !['swim', 'rest'].includes(day.type);
-    let html = `<div class="wk-top"><div><span class="eyebrow">${esc(TYPE_LABEL[day.type])}${day.key && isRun ? ' · treino-chave' : ''}</span><h3>${esc(day.title)}</h3></div>` +
+    let html = `<div class="wk-top"><div><span class="eyebrow">${day.recovery ? `Recuperação · dia ${day.recovery} de 7` : esc(TYPE_LABEL[day.type])}${day.key && isRun ? ' · treino-chave' : ''}</span><h3>${esc(day.title)}</h3></div>` +
       (st ? `<span class="chip good">${CHECK}Feito</span>` : '') + `</div>`;
     if (isRun) {
       const hero = [];
@@ -315,6 +320,7 @@
     if (day.type === 'rest' && !day.gym) html += `<p class="muted">${esc(day.rua && !/^descanso$/i.test(day.rua) ? day.rua : 'Descanso total. Sono, água e boa comida.')}</p>`;
     const adj = day.movedFrom ? `Treino de ${WD[D(day.movedFrom).getDay()]} ${ddmm(day.movedFrom)} remarcado para hoje.` : day.movedTo ? '' : day.skipped ? '' : day.softened ? `Era "${day.softened}". Trocado por leve para recuperar.` : '';
     if (day.movedFrom || day.movedTo || day.skipped || day.softened) html += `<div class="blk adj"><span class="k">Plano ajustado</span>${adj ? `<p class="note">${esc(adj)}</p>` : ''}<button class="linkbtn" id="undoAdj" type="button">Desfazer ajuste</button></div>`;
+    if (!st) html += raceDayBlock(day);
     if (day.type === 'race') html += `<a class="blk run golink" href="#plano" data-goto="raceCard"><span class="k">Plano de prova</span><span>Ritmo por km, aquecimento e checklist do dia <b>›</b></span></a>`;
     html += `</div>`;
 
@@ -325,7 +331,8 @@
     if (st && day.type !== 'rest') html += feelHtml(day.date);
     if (st && (day.type !== 'rest' || day.gym)) html += `<div class="row-actions"><button class="btn ghost sm" id="undo" type="button">Desmarcar</button>${isRun && st.analysis ? `<button class="btn ghost sm" id="redo" type="button">Analisar de novo</button>` : ''}</div>`;
     el.innerHTML = html;
-    bindFeel(day.date);
+    bindFeel(day.date); bindRaceChecks(el);
+    const ro = $('rmOpen'); if (ro) ro.onclick = openRaceMode;
     const gb = $('gymBox'); if (gb && isRun) gb.ontoggle = () => { gymOpen = gb.open; };
     const ua = $('undoAdj'); if (ua) ua.onclick = () => {
       if (day.movedFrom) delete extra.moves[day.date];
@@ -410,7 +417,7 @@
     const bars = a.splits.length >= 2 ? `<div class="bars" aria-label="Ritmo por km">${a.splits.map(s => `<i title="${A.fmtPace(s.pace)}/km" style="height:${(30 + 70 * (maxP - s.pace) / Math.max(1, maxP - minP)).toFixed(0)}%"></i>`).join('')}</div><p class="muted small">Ritmo por km (barra mais alta = mais rápido): ${a.splits.map(s => A.fmtPace(s.pace)).join(' · ')}</p>` : '';
     box.innerHTML = `<div class="card-head"><div><span class="eyebrow">Análise do treino</span><h3>${esc(a.headline)}</h3></div><span class="chip ${tone}">${label}</span></div>` +
       `<div class="metrics"><div class="metric"><span>Distância</span><b>${m.distKm.toFixed(2).replace('.', ',')}</b></div><div class="metric"><span>Tempo</span><b>${A.fmtTime(m.time)}</b></div><div class="metric"><span>Ritmo</span><b>${m.pace ? A.fmtPace(m.pace) : '–'}</b></div><div class="metric"><span>FC</span><b>${m.hr || '–'}</b></div></div>` +
-      bars + (() => { const Z = hrZones(); const zb = Z ? zoneBar(zoneTimes(a.splits, Z)) : ''; return zb ? `<div><span class="eyebrow">Tempo por zona de FC</span>${zb}</div>` : ''; })() + `<ul class="points">${a.points.map(p => `<li class="${p.tone}">${esc(p.txt)}</li>`).join('')}</ul>` +
+      bars + (() => { const Z = hrZones(); const zb = Z ? zoneBar(zoneTimes(a.splits, Z)) : ''; return zb ? `<div><span class="eyebrow">Tempo por zona de FC</span>${zb}</div>` : ''; })() + `<ul class="points">${a.points.map(p => `<li class="${p.tone}">${esc(p.txt)}</li>`).join('')}</ul>` + compareHtml(day.date) +
       (a.estimateSec ? `<p class="msg good">Este treino indica ${A.fmtTime(a.estimateSec)} nos ${distKm()} km (${esc(a.estimateBasis)}). A estimativa foi atualizada.</p>` : '') +
       `<div class="row-actions between"><button class="btn ghost sm" id="shareW" type="button">Compartilhar</button>${st.activityId ? `<a class="muted small" href="https://www.strava.com/activities/${encodeURIComponent(st.activityId)}" target="_blank" rel="noopener">Ver no Strava ↗</a>` : ''}</div>`;
     box.hidden = false;
@@ -790,13 +797,13 @@
       `<p class="muted small">${esc(r.note)}</p>` +
       `<div class="tbl"><table><thead><tr><th>Km</th><th>Ritmo</th><th>Acumulado</th></tr></thead><tbody>${show.map(x => `<tr><td>${x.len < 1 ? `${x.km - 1 + +x.len.toFixed(1)}`.replace('.', ',') : x.km}</td><td>${A.fmtPace(x.pace)}/km</td><td>${A.fmtTime(Math.round(x.acc))}</td></tr>`).join('')}</tbody></table></div>` +
       `<p class="muted small">O relógio costuma marcar um pouco mais que a distância oficial. Mire 3–5 s/km mais rápido do que a tabela no relógio.</p>` +
-      `<details class="race"${raceDays() <= 3 ? ' open' : ''}><summary>Checklist da véspera e do dia</summary><div class="checks2">` +
-      `<div><b>Véspera</b><ul><li>Jantar com carboidrato que você já conhece</li><li>Separar roupa, tênis, número e chip</li><li>Dormir cedo, sem treino</li></ul></div>` +
-      `<div><b>Manhã da prova</b><ul><li>Café da manhã 2–3 h antes, já testado em treino</li><li>Água aos poucos, sem exagero</li><li>Chegar 45 min antes</li></ul></div>` +
-      `<div><b>Largada</b><ul><li>10 min de trote leve + 3 acelerações curtas</li><li>Largar no meio do pelotão, sem ziguezague</li><li>Km 1 levemente mais lento que o alvo</li></ul></div>` +
-      `<div><b>Durante</b><ul><li>Olhar o ritmo médio a cada km</li><li>Km 3 é o mais duro de cabeça: só mantenha</li><li>Último km com tudo o que sobrar</li></ul></div>` +
-      `</div></details>` +
+      `<div class="race-sched"><label for="rStart">Horário da largada<input id="rStart" type="time" value="${raceCfg().start}"></label><button class="btn ghost" id="rmOpen2" type="button">Tela da prova</button></div>` +
+      `<details class="race"${raceDays() <= 3 ? ' open' : ''}><summary>Horários do dia</summary>${timelineHtml()}</details>` +
+      `<details class="race"${raceDays() <= 3 ? ' open' : ''}><summary>Checklist da véspera e do dia</summary>${raceChecksHtml()}</details>` +
       (sec && window.marked ? `<details class="prose"><summary>Estratégia do seu plano</summary>${window.marked.parse(sec)}</details>` : '');
+    bindRaceChecks(box);
+    $('rmOpen2').onclick = openRaceMode;
+    $('rStart').onchange = () => { const v = $('rStart').value; if (!/^\d{2}:\d{2}$/.test(v)) return; extra.race = { ...raceCfg(), start: v }; persist(); renderAll(); };
   }
 
   /* ---------- Alimentação e peso ---------- */
@@ -863,7 +870,11 @@
     $('installCard').hidden = standalone;
   }
   $('installBtn').onclick = async () => { if (!installEvt) return; installEvt.prompt(); try { await installEvt.userChoice; } catch (e) {} installEvt = null; renderInstall(); };
-  if ('serviceWorker' in navigator && location.protocol === 'https:') window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
+  if ('serviceWorker' in navigator && location.protocol === 'https:') window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').then(reg => {
+    swReg = reg;
+    if (reg.waiting && navigator.serviceWorker.controller) showUpdate();
+    reg.addEventListener('updatefound', () => { const w = reg.installing; if (w) w.addEventListener('statechange', () => { if (w.state === 'installed' && navigator.serviceWorker.controller) showUpdate(); }); });
+  }).catch(() => {}));
 
   /* ---------- Ritmos recalculados pelo teste ---------- */
   const PG = window.PlanGenerator;
@@ -1182,8 +1193,284 @@
   }
   $('shareProg').onclick = () => shareProgress();
 
+  /* ---------- Comparar com treinos iguais ---------- */
+  function similarPast(date) {
+    const a = done[date] && done[date].analysis; if (!a) return [];
+    const lab = x => x.metrics.work ? x.metrics.work.label : '';
+    const same = b => {
+      if (['test', 'race'].includes(a.type)) return ['test', 'race'].includes(b.type) && b.metrics.distKm >= 4.5;
+      if (b.type !== a.type) return false;
+      if (a.type === 'interval') return lab(b) === lab(a);
+      if (a.type === 'easy') return Math.abs(b.metrics.distKm - a.metrics.distKm) <= Math.max(0.8, a.metrics.distKm * 0.25);
+      return true;
+    };
+    return Object.entries(done).filter(([d, v]) => d < date && v && v.analysis && v.analysis.metrics && same(v.analysis))
+      .sort((x, y) => y[0].localeCompare(x[0])).slice(0, 3).map(([d, v]) => ({ date: d, a: v.analysis }));
+  }
+  const workOf = a => a.metrics.work && a.metrics.work.pace ? { pace: a.metrics.work.pace, hr: a.metrics.work.hr || a.metrics.hr } : { pace: a.metrics.pace, hr: a.metrics.hr };
+  function compareHtml(date) {
+    const a = done[date].analysis, prev = similarPast(date);
+    if (!prev.length || !a.metrics.pace) return '';
+    const c = workOf(a), p = workOf(prev[0].a);
+    const dp = Math.round(c.pace - p.pace), dh = c.hr && p.hr ? c.hr - p.hr : null;
+    const what = ['test', 'race'].includes(a.type) ? 'teste ou prova' : a.metrics.work ? a.metrics.work.label : a.type === 'easy' ? `leve de ~${Math.round(a.metrics.distKm)} km` : 'treino igual';
+    let msg, tone = 'info';
+    if (dp <= -3 && (dh == null || dh <= 2)) { msg = `${-dp} s/km mais rápido${dh != null ? (dh < -1 ? ` com FC ${-dh} mais baixa` : ' com a mesma FC') : ''}. Evolução clara.`; tone = 'good'; }
+    else if (Math.abs(dp) < 3 && dh != null && dh <= -3) { msg = `Mesmo ritmo com FC ${-dh} mais baixa. O corpo está se adaptando.`; tone = 'good'; }
+    else if (dp <= -3) msg = `${-dp} s/km mais rápido, mas com FC ${dh} mais alta. Foi um esforço maior.`;
+    else if (dp >= 3 && (dh == null || dh >= -2)) { msg = `${dp} s/km mais lento que da última vez. Calor, sono e cansaço pesam; um dia ruim não apaga a evolução.`; tone = 'warn'; }
+    else if (dp >= 3) msg = `${dp} s/km mais lento, com FC ${-dh} mais baixa. Pegou mais leve.`;
+    else msg = 'Bem parecido com da última vez.';
+    const sign = n => n > 0 ? `+${n}` : n < 0 ? `−${-n}` : '0';
+    const row = (d, x, cur) => { const w = workOf(x); return `<tr${cur ? ' class="cur"' : ''}><td>${cur ? 'Hoje' : ddmm(d)}</td><td>${w.pace ? A.fmtPace(w.pace) : '–'}${cur || !w.pace ? '' : ` <small class="${c.pace - w.pace <= -3 ? 'good' : c.pace - w.pace >= 3 ? 'bad' : 'muted'}">${sign(Math.round(c.pace - w.pace))}s</small>`}</td><td>${w.hr || '–'}</td><td>${x.metrics.distKm.toFixed(1).replace('.', ',')} km</td></tr>`; };
+    return `<div class="cmp"><span class="eyebrow">Comparado com ${prev.length > 1 ? 'treinos iguais' : 'o último treino igual'} · ${esc(what)}</span>` +
+      `<p class="msg ${tone}">${esc(msg)}</p><div class="tbl"><table><thead><tr><th>Dia</th><th>Ritmo</th><th>FC</th><th>Dist.</th></tr></thead><tbody>${row(date, a, true)}${prev.map(x => row(x.date, x.a)).join('')}</tbody></table></div>` +
+      `<p class="muted small">${a.metrics.work ? 'Ritmo e FC da parte principal do treino.' : 'Ritmo e FC médios.'} Hoje vs. cada dia (negativo = hoje mais rápido).</p></div>`;
+  }
+
+  /* ---------- Dia da prova ---------- */
+  const raceCfg = () => ({ start: '06:00', checks: {}, ...(extra.race || {}) });
+  const hm = m => `${pad(Math.floor(((m % 1440) + 1440) % 1440 / 60))}:${pad(((m % 60) + 60) % 60)}`;
+  function raceTimeline() {
+    const [h, m] = raceCfg().start.split(':').map(Number), t = h * 60 + m;
+    return [[-180, 'Acordar e beber um copo de água'], [-165, 'Café da manhã já testado em treino'], [-90, 'Sair de casa (ajuste à distância)'], [-45, 'Chegar, retirar kit e ir ao banheiro'],
+      [-25, 'Aquecer: 10 min de trote leve'], [-12, '3 acelerações curtas e ir para a largada'], [0, 'Largada: km 1 um pouco mais lento que o alvo']].map(([o, txt]) => ({ at: hm(t + o), txt }));
+  }
+  const RACE_CHECKS = {
+    'Véspera': ['Jantar com carboidrato que você já conhece', 'Separar roupa, tênis, número e chip', 'Carregar relógio e celular', 'Conferir horário e local da largada', 'Dormir cedo, sem treino'],
+    'Manhã da prova': ['Café da manhã 2 a 3 h antes', 'Água aos poucos, sem exagero', 'Vaselina onde costuma assar', 'Número preso na camisa'],
+    'Durante': ['Largar no meio do pelotão, sem ziguezague', 'Olhar o ritmo médio a cada km', 'Km 3: só manter, é o mais duro de cabeça', 'Último km com tudo o que sobrar']
+  };
+  function raceChecksHtml(only) {
+    const ck = raceCfg().checks; let i = 0;
+    return `<div class="checks2 rc">${Object.entries(RACE_CHECKS).map(([g, items]) => { const html = `<div><b>${g}</b><div class="checklist">${items.map(t => { const k = 'c' + (i++); return `<label class="ck"><input type="checkbox" data-rck="${k}"${ck[k] ? ' checked' : ''}><span>${esc(t)}</span></label>`; }).join('')}</div></div>`; return !only || only === g ? html : ''; }).join('')}</div>`;
+  }
+  function bindRaceChecks(root) {
+    root.querySelectorAll('[data-rck]').forEach(b => b.onchange = () => { const c = raceCfg(); c.checks = { ...c.checks, [b.dataset.rck]: b.checked }; extra.race = c; persist(); });
+  }
+  function timelineHtml() {
+    return `<ol class="tline">${raceTimeline().map(x => `<li><b>${x.at}</b><span>${esc(x.txt)}</span></li>`).join('')}</ol>`;
+  }
+  // Tela da prova: cronômetro, alvo de cada km e quanto está na frente ou atrás.
+  let rmTimer = null, rmLock = null;
+  function openRaceMode() {
+    const r = racePlan(); let box = $('raceMode');
+    if (!box) { box = document.createElement('div'); box.id = 'raceMode'; box.className = 'racemode'; document.body.appendChild(box); }
+    const live = () => (extra.race && extra.race.live) || null;
+    const setLive = v => { const c = raceCfg(); c.live = v; extra.race = c; persist(); };
+    const draw = () => {
+      const L = live(), laps = L ? L.laps : [], k = laps.length, row = r.rows[Math.min(k, r.rows.length - 1)];
+      const el = L ? (Date.now() - L.t0) / 1000 : 0, finished = L && k >= r.rows.length;
+      const last = k ? laps[k - 1] - r.rows[k - 1].acc : null;
+      box.innerHTML = `<div class="rm-top"><span>Alvo ${A.fmtTime(r.target)}</span><button class="rm-x" id="rmClose" type="button" aria-label="Fechar">✕</button></div>` +
+        `<div class="rm-time">${A.fmtTime(finished ? laps[k - 1] : el)}</div>` +
+        (finished ? `<div class="rm-km">Chegada!</div><p class="rm-sub">${laps[k - 1] <= goalSec() ? 'Meta batida.' : `${A.fmtTime(laps[k - 1] - goalSec())} acima da meta.`} Conclua o treino na tela Hoje para analisar com o Strava.</p>`
+          : `<div class="rm-km">Km ${k + 1}${row.len < 1 ? ' (final)' : ''} de ${r.rows.length}</div><div class="rm-pace">${A.fmtPace(row.pace)}<small>/km</small></div><p class="rm-sub">Passe na placa em <b>${A.fmtTime(Math.round(row.acc))}</b></p>`) +
+        (last != null ? `<p class="rm-delta ${last <= 2 ? 'good' : 'bad'}">${Math.abs(last) < 2 ? 'No ritmo' : last < 0 ? `${A.fmtTime(-last)} na frente` : `${A.fmtTime(last)} atrás`}</p>` : '<p class="rm-delta">&nbsp;</p>') +
+        `<div class="rm-actions">${!L ? `<button class="btn big wide" id="rmGo" type="button">Iniciar na largada</button>` : finished ? `<button class="btn ghost wide" id="rmReset" type="button">Zerar</button>` : `<button class="btn big wide" id="rmLap" type="button">Passei no km ${row.len < 1 ? 'final' : k + 1}</button>`}` +
+        `${L && k && !finished ? `<button class="btn ghost sm" id="rmUndo" type="button">Desfazer última placa</button>` : ''}${L && !finished ? `<button class="btn ghost sm" id="rmReset" type="button">Zerar</button>` : ''}</div>`;
+      const on = (id, f) => { const b = $(id); if (b) b.onclick = f; };
+      on('rmClose', closeRaceMode);
+      on('rmGo', () => { setLive({ t0: Date.now(), laps: [] }); draw(); });
+      on('rmLap', () => { const L2 = live(); L2.laps.push(Math.round((Date.now() - L2.t0) / 1000)); setLive(L2); if (navigator.vibrate) navigator.vibrate(120); draw(); });
+      on('rmUndo', () => { const L2 = live(); L2.laps.pop(); setLive(L2); draw(); });
+      let armed = false;
+      on('rmReset', () => { const b = $('rmReset'); if (!armed) { armed = true; b.textContent = 'Toque de novo para zerar'; return; } setLive(null); draw(); });
+    };
+    draw(); box.hidden = false; document.body.classList.add('noscroll');
+    clearInterval(rmTimer); rmTimer = setInterval(() => { const t = box.querySelector('.rm-time'); const L = live(); if (t && L && L.laps.length < r.rows.length) t.textContent = A.fmtTime((Date.now() - L.t0) / 1000); }, 500);
+    if (navigator.wakeLock) navigator.wakeLock.request('screen').then(l => { rmLock = l; }).catch(() => {});
+  }
+  function closeRaceMode() {
+    clearInterval(rmTimer); rmTimer = null; const b = $('raceMode'); if (b) b.hidden = true; document.body.classList.remove('noscroll');
+    if (rmLock) { rmLock.release().catch(() => {}); rmLock = null; }
+  }
+  function raceDayBlock(day) {
+    const dist = day.date === raceISO();
+    if (dist) return `<div class="blk race"><span class="k">Horários de hoje · largada ${raceCfg().start}</span>${timelineHtml()}<button class="btn wide big" id="rmOpen" type="button">Abrir tela da prova</button><p class="note">Mostra o ritmo de cada km e se você está na frente ou atrás. Toque a cada placa de km.</p></div>`;
+    if (day.date === addDays(raceISO(), -1)) return `<div class="blk race"><span class="k">Véspera da prova</span>${raceChecksHtml('Véspera')}<p class="note">Largada amanhã às ${raceCfg().start}. Ajuste o horário no cartão Plano de prova.</p></div>`;
+    return '';
+  }
+
+  /* ---------- Depois da prova ---------- */
+  const REC = [
+    ['rest', 'Descanso ou caminhada', 'Descanso, ou caminhada leve de 20 a 30 min.'],
+    ['rest', 'Descanso ativo', 'Natação leve ou mobilidade por 20 a 30 min, se quiser.'],
+    ['easy', "Trote leve 20'", "20' L, FC ≤145. Se doer algo, caminhe."],
+    ['rest', 'Descanso', 'Mobilidade e alongamento leve.'],
+    ['easy', "Leve 25'", "25' L, FC ≤145."],
+    ['rest', 'Descanso', 'Sono, água e boa comida.'],
+    ['easy', "Leve 30' + 4 acelerações", "30' L + 4 × 15\" soltos, com 1' de caminhada entre eles."]
+  ];
+  const recEnd = () => addDays(raceISO(), REC.length);
+  function recoveryDay(date) {
+    if (!plan || date <= raceISO() || date > recEnd()) return null;
+    if (plan.days.some(d => d.date > raceISO())) return null;
+    const n = Math.round((D(date) - D(raceISO())) / 864e5), [type, title, rua] = REC[n - 1];
+    return { date, type, title, rua, recovery: n };
+  }
+  const dayAt = date => (plan && dayOf(date)) || recoveryDay(date);
+  function raceResult() {
+    const st = done[raceISO()];
+    return st && st.analysis && st.analysis.metrics ? st.analysis.metrics.time : null;
+  }
+  function renderNext() {
+    const box = $('nextCard'); if (!box) return;
+    const show = plan && (today > raceISO() || (today === raceISO() && done[today])) && !plan.days.some(d => d.date > today);
+    box.hidden = !show; if (!show) return;
+    const res = raceResult(), nx = extra.next || {};
+    const dist = distKm();
+    const head = res ? `<p class="msg ${res <= goalSec() ? 'good' : ''}">Você fez ${A.fmtTime(res)} nos ${String(dist).replace('.', ',')} km${res <= goalSec() ? `: meta de ${A.fmtTime(goalSec())} batida!` : ` (meta ${A.fmtTime(goalSec())}).`}</p>` : '';
+    const opt = v => `<option value="${v}"${String(nx.dist || '') === v ? ' selected' : ''}>${v.replace('.', ',')} km</option>`;
+    box.innerHTML = `<div class="card-head"><div><span class="eyebrow">Depois da prova</span><h3>Qual é o próximo objetivo?</h3></div></div>` + head +
+      `<p class="muted small">Primeiro, uma semana de recuperação (já está no calendário). Depois, você escolhe a próxima prova e o app monta o plano.</p>` +
+      (() => { const up = (extra.races || []).filter(r => r.date > addDays(today, 21)).sort((a, b) => a.date.localeCompare(b.date)).slice(0, 3); return up.length ? `<div class="picklist">${up.map(r => `<button class="pick" type="button" data-npick="${esc(r.id)}"><span><b>${esc(r.name)}</b><br><small class="muted">${ddmm(r.date)} · ${kmTxt(r.dist)}${r.goal ? ' · meta ' + esc(r.goal) : ''}</small></span><b>›</b></button>`).join('')}</div><p class="muted small">Ou escolha outra:</p>` : ''; })() +
+      `<form class="form" id="nextForm" novalidate>` +
+      `<label for="nDist">Distância<select id="nDist">${['5', '10', '21.1', '42.2'].map(opt).join('')}</select></label>` +
+      `<label for="nGoal">Tempo-objetivo<input id="nGoal" type="text" inputmode="numeric" placeholder="ex.: 55:00" value="${esc(nx.goal || '')}"></label>` +
+      `<label for="nDate" class="full">Data da prova<input id="nDate" type="date" value="${esc(nx.date || '')}" min="${addDays(today, 21)}"></label>` +
+      `<button class="btn full" type="submit">Montar o plano</button></form><p class="msg" id="nextMsg" hidden></p>`;
+    box.querySelectorAll('[data-npick]').forEach(b => b.onclick = () => { const r = extra.races.find(x => x.id === b.dataset.npick); $('nDist').value = nearDist(+r.dist); $('nGoal').value = r.goal || ''; $('nDate').value = r.date; if (r.goal) $('nextForm').requestSubmit(); else $('nGoal').focus(); });
+    $('nextForm').onsubmit = e => {
+      e.preventDefault();
+      const d = $('nDist').value, g = $('nGoal').value.trim(), dt = $('nDate').value, m = $('nextMsg');
+      extra.next = { dist: d, goal: g, date: dt }; persist();
+      if (!dt || !toSec(g)) { m.hidden = false; m.className = 'msg bad'; m.textContent = 'Escolha a data da prova e escreva o tempo-objetivo, como 55:00 ou 1:59:00.'; return; }
+      const start = recEnd() >= today ? addDays(recEnd(), 1) : addDays(today, 1);
+      if ((D(dt) - D(start)) / 864e5 < 21) { m.hidden = false; m.className = 'msg bad'; m.textContent = `Escolha uma prova a partir de ${ddmm(addDays(start, 21))}, para ter pelo menos 3 semanas de plano depois da recuperação.`; return; }
+      $('gDist').value = d; $('gGoal').value = g; $('gRace').value = dt; $('gStart').value = start;
+      if (res && dist === 5 && !$('gCur').value) $('gCur').value = A.fmtTime(res);
+      location.hash = 'ajustes'; openGen(true);
+      setTimeout(() => $('genForm').requestSubmit(), 80);
+    };
+  }
+
+  /* ---------- Atualizar o app ---------- */
+  let appVer = null, newVer = false, swReg = null;
+  async function fetchVer() { try { const r = await fetch('/api/version', { cache: 'no-store' }); return r.ok ? (await r.json()).v || null : null; } catch (e) { return null; } }
+  function showUpdate() {
+    newVer = true; renderUpdate();
+    let bar = $('updBar');
+    if (!bar) { bar = document.createElement('div'); bar.id = 'updBar'; bar.className = 'updbar'; bar.innerHTML = `<span>Nova versão do PacePro disponível</span><button class="btn sm" type="button">Atualizar</button>`; document.body.appendChild(bar); bar.querySelector('button').onclick = doUpdate; }
+    bar.hidden = false;
+  }
+  async function checkUpdate(manual) {
+    if (swReg) swReg.update().catch(() => {});
+    const v = await fetchVer();
+    if (!appVer) appVer = v;
+    if (v && appVer && v !== appVer) showUpdate();
+    else if (manual) showToast(v ? 'Você já está na versão mais nova.' : 'Não consegui verificar agora. Tente de novo com internet.', !v);
+    renderUpdate();
+  }
+  async function doUpdate() {
+    saveNow();
+    try { if (swReg && swReg.waiting) swReg.waiting.postMessage({ type: 'skip' }); } catch (e) {}
+    try { if (window.caches) { const ks = await caches.keys(); await Promise.all(ks.map(k => caches.delete(k))); } } catch (e) {}
+    location.reload();
+  }
+  function renderUpdate() {
+    const c = $('updChip'); if (!c) return;
+    c.textContent = newVer ? 'nova versão' : appVer ? `versão ${appVer}` : 'versão –';
+    c.className = newVer ? 'chip key' : 'chip';
+    $('updText').textContent = newVer ? 'Tem uma versão nova. Toque em Atualizar: seus dados continuam salvos.' : 'O app procura atualizações sozinho quando você abre. Se quiser, verifique agora.';
+    $('updNow').textContent = newVer ? 'Atualizar agora' : 'Verificar atualização';
+  }
+  $('updNow').onclick = () => newVer ? doUpdate() : checkUpdate(true);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkUpdate(false); });
+  setInterval(() => checkUpdate(false), 30 * 60000);
+
+  /* ---------- Calendário de provas ---------- */
+  const MONL = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+  const kmTxt = d => `${String(+d).replace('.', ',')} km`;
+  const nearDist = d => ['5', '10', '21.1', '42.2'].reduce((b, x) => Math.abs(+x - d) < Math.abs(+b - d) ? x : b, '5');
+  function allRaces() {
+    const list = (extra.races || []).map(r => ({ ...r }));
+    if (plan && plan.race && !list.some(r => r.date === plan.race)) list.push({ id: 'plan', name: 'Prova do plano atual', date: plan.race, dist: distKm(), goal: A.fmtTime(goalSec()), status: 'inscrito', plan: true });
+    list.forEach(r => { if (plan && r.date === plan.race) r.plan = true; });
+    return list.sort((a, b) => a.date.localeCompare(b.date));
+  }
+  function raceResultAt(date) {
+    const st = done[date]; const a = st && st.analysis;
+    return a && ['race', 'test'].includes(a.type) && a.metrics ? a.metrics.time : null;
+  }
+  // Monta o plano para uma prova: preenche o gerador e já gera.
+  function prefillGen(dist, goal, date) {
+    const afterRec = plan && date > raceISO() && today <= recEnd() ? addDays(recEnd(), 1) : addDays(today, 1);
+    $('gDist').value = nearDist(+dist); $('gGoal').value = goal || ''; $('gRace').value = date; $('gStart').value = afterRec;
+    const res = raceResult(); if (res && distKm() === 5 && !$('gCur').value) $('gCur').value = A.fmtTime(res);
+    location.hash = 'ajustes'; openGen(true);
+    if (goal) setTimeout(() => $('genForm').requestSubmit(), 80);
+  }
+  function icsFor(r) {
+    const d = r.date.replace(/-/g, ''), d2 = addDays(r.date, 1).replace(/-/g, '');
+    const txt = s => String(s || '').replace(/[\\,;]/g, m => '\\' + m).replace(/\n/g, ' ');
+    const body = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//PacePro//PT', 'BEGIN:VEVENT', `UID:${r.id}-${d}@pacepro`, `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').slice(0, 15)}Z`,
+      `DTSTART;VALUE=DATE:${d}`, `DTEND;VALUE=DATE:${d2}`, `SUMMARY:${txt(r.name)} (${txt(kmTxt(r.dist))})`, r.place ? `LOCATION:${txt(r.place)}` : '', r.goal ? `DESCRIPTION:Meta ${txt(r.goal)}` : '',
+      'BEGIN:VALARM', 'TRIGGER:-P1D', 'ACTION:DISPLAY', 'DESCRIPTION:Prova amanhã', 'END:VALARM', 'END:VEVENT', 'END:VCALENDAR'].filter(Boolean).join('\r\n');
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([body], { type: 'text/calendar' })); a.download = `prova-${r.date}.ics`;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+  let raceOpen = null, raceEdit = null;
+  function raceRow(r) {
+    const dd = D(r.date), n = Math.round((dd - D(today)) / 864e5), past = r.date < today, res = past || n === 0 ? raceResultAt(r.date) : null;
+    const when = n === 0 ? 'hoje' : n === 1 ? 'amanhã' : n > 0 ? (n < 60 ? `em ${n} dias` : `em ${Math.round(n / 7)} semanas`) : '';
+    const sub = [kmTxt(r.dist), r.goal ? `meta ${r.goal}` : '', r.place].filter(Boolean).map(esc).join(' · ');
+    const chip = res ? `<span class="chip ${r.goal && toSec(r.goal) && res <= toSec(r.goal) ? 'good' : ''}">${A.fmtTime(res)}</span>` : past ? '<span class="chip">sem resultado</span>' : `<span class="chip ${r.plan ? 'key' : r.status === 'inscrito' ? 'good' : ''}">${r.plan ? 'no plano' : r.status === 'inscrito' ? 'inscrito' : 'pretendo'}</span>`;
+    const open = raceOpen === r.id;
+    return `<div class="rrow${past ? ' past' : ''}"><button class="rr-main" type="button" data-rid="${esc(r.id)}" aria-expanded="${open}"><span class="dtile"><b>${dd.getDate()}</b><small>${WD[dd.getDay()]}</small></span><span class="rr-txt"><span class="t">${esc(r.name)}</span><span class="s">${sub}</span>${when ? `<span class="s when">${when}</span>` : ''}</span>${chip}</button>` +
+      (open ? `<div class="rr-act">${!past && !r.plan ? `<button class="btn sm" type="button" data-rplan="${esc(r.id)}">Montar plano para esta prova</button>` : ''}${!past ? `<button class="btn ghost sm" type="button" data-rics="${esc(r.id)}">Adicionar à agenda</button>` : ''}${r.id !== 'plan' ? `<button class="btn ghost sm" type="button" data-redit="${esc(r.id)}">Editar</button><button class="btn ghost sm danger" type="button" data-rdel="${esc(r.id)}">Excluir</button>` : `<span class="muted small">Vem do plano. Para trocar, gere um plano novo.</span>`}</div>` : '') + `</div>`;
+  }
+  function renderRaces() {
+    const box = $('racesCard'); if (!box) return;
+    const list = allRaces(), up = list.filter(r => r.date >= today), past = list.filter(r => r.date < today).reverse();
+    let html = `<div class="card-head"><div><span class="eyebrow">Calendário</span><h2>Próximas provas</h2></div><button class="btn sm" id="raceAdd" type="button">+ Prova</button></div>`;
+    if (!up.length) html += `<p class="muted small">Nenhuma prova marcada. Toque em "+ Prova" para adicionar as próximas.</p>`;
+    let mk = '';
+    up.forEach(r => { const k = r.date.slice(0, 7); if (k !== mk) { mk = k; html += `<div class="rmonth">${MONL[+k.slice(5) - 1]} de ${k.slice(0, 4)}</div>`; } html += raceRow(r); });
+    if (past.length) html += `<details class="rpast"><summary>Provas feitas (${past.length})</summary>${past.map(raceRow).join('')}</details>`;
+    box.innerHTML = html;
+    box.querySelectorAll('[data-rid]').forEach(b => b.onclick = () => { raceOpen = raceOpen === b.dataset.rid ? null : b.dataset.rid; renderRaces(); });
+    const find = id => list.find(r => r.id === id);
+    box.querySelectorAll('[data-rplan]').forEach(b => b.onclick = () => { const r = find(b.dataset.rplan); prefillGen(r.dist, r.goal, r.date); });
+    box.querySelectorAll('[data-rics]').forEach(b => b.onclick = () => icsFor(find(b.dataset.rics)));
+    box.querySelectorAll('[data-redit]').forEach(b => b.onclick = () => { raceEdit = b.dataset.redit; renderRaceForm(true); });
+    box.querySelectorAll('[data-rdel]').forEach(b => b.onclick = () => {
+      if (b.dataset.armed) { extra.races = (extra.races || []).filter(r => r.id !== b.dataset.rdel); raceOpen = null; persist(); renderAll(); return; }
+      b.dataset.armed = '1'; b.textContent = 'Toque de novo para excluir';
+    });
+    $('raceAdd').onclick = () => { raceEdit = null; renderRaceForm(true); };
+  }
+  function renderRaceForm(open) {
+    const box = $('raceFormCard'); if (!box) return;
+    if (!open) { box.hidden = true; return; }
+    const r = (extra.races || []).find(x => x.id === raceEdit) || { name: '', date: '', dist: 5, goal: '', place: '', status: 'inscrito' };
+    box.hidden = false;
+    box.innerHTML = `<div class="card-head"><h2>${raceEdit ? 'Editar prova' : 'Nova prova'}</h2></div><form class="form" id="raceForm" novalidate>` +
+      `<label for="rfName" class="full">Nome<input id="rfName" type="text" value="${esc(r.name)}" placeholder="ex.: Corrida da Ponte"></label>` +
+      `<label for="rfDate">Data<input id="rfDate" type="date" value="${esc(r.date)}"></label>` +
+      `<label for="rfDist">Distância (km)<input id="rfDist" type="text" inputmode="decimal" list="rfDists" value="${esc(String(r.dist).replace('.', ','))}"></label><datalist id="rfDists"><option value="5"><option value="10"><option value="15"><option value="21,1"><option value="42,2"></datalist>` +
+      `<label for="rfGoal">Meta (opcional)<input id="rfGoal" type="text" inputmode="numeric" value="${esc(r.goal)}" placeholder="ex.: 55:00"></label>` +
+      `<label for="rfStatus">Situação<select id="rfStatus"><option value="inscrito"${r.status === 'inscrito' ? ' selected' : ''}>Inscrito</option><option value="pretendo"${r.status !== 'inscrito' ? ' selected' : ''}>Pretendo correr</option></select></label>` +
+      `<label for="rfPlace" class="full">Local (opcional)<input id="rfPlace" type="text" value="${esc(r.place || '')}" placeholder="ex.: Beira Mar, Fortaleza"></label>` +
+      `<div class="row-actions full"><button class="btn" type="submit">Salvar</button><button class="btn ghost" id="rfCancel" type="button">Cancelar</button></div></form><p class="msg" id="rfMsg" hidden></p>`;
+    box.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    $('rfCancel').onclick = () => renderRaceForm(false);
+    $('raceForm').onsubmit = e => {
+      e.preventDefault();
+      const m = $('rfMsg'), bad = t => { m.hidden = false; m.className = 'msg bad'; m.textContent = t; };
+      const name = $('rfName').value.trim(), date = $('rfDate').value, dist = parseFloat($('rfDist').value.replace(',', '.')), goal = $('rfGoal').value.trim();
+      if (!name) return bad('Dê um nome para a prova.');
+      if (!date) return bad('Escolha a data da prova.');
+      if (!(dist > 0 && dist <= 100)) return bad('Escreva a distância em km, como 5, 10 ou 21,1.');
+      if (goal && !toSec(goal)) return bad('Escreva a meta como 55:00 ou 1:59:00.');
+      const item = { id: raceEdit || 'r' + Date.now().toString(36), name, date, dist, goal, place: $('rfPlace').value.trim(), status: $('rfStatus').value };
+      extra.races = (extra.races || []).filter(x => x.id !== item.id).concat(item);
+      raceEdit = null; raceOpen = item.id; persist(); renderRaceForm(false); renderAll(); showToast('Prova salva.');
+    };
+  }
+
   /* ---------- Rotas ---------- */
-  const VIEWS = ['hoje', 'plano', 'progresso', 'ajustes'];
+  const VIEWS = ['hoje', 'plano', 'progresso', 'provas', 'ajustes'];
   function route() {
     const h = (location.hash || '#hoje').slice(1); view = VIEWS.includes(h) ? h : 'hoje';
     document.querySelectorAll('.view').forEach(s => { s.hidden = s.dataset.view !== view; });
@@ -1220,8 +1507,8 @@
     const has = !!plan;
     document.querySelectorAll('[data-no-plan]').forEach(el => { el.hidden = has; });
     document.querySelectorAll('[data-needs-plan]').forEach(el => { el.hidden = !has; });
-    if (has) { renderSummary(); renderAdjust(); renderWorkout(); renderDiet(); renderPlan(); renderRace(); renderTest(); renderWeekSum(); }
-    renderProgress(); renderVolume(); renderCadence(); renderZones(); renderWeight(); renderWxSettings(); renderSettings(); renderHr(); renderInstall(); bindStravaButtons(); route();
+    if (has) { renderSummary(); renderAdjust(); renderWorkout(); renderDiet(); renderPlan(); renderRace(); renderTest(); renderWeekSum(); renderNext(); }
+    renderProgress(); renderVolume(); renderCadence(); renderZones(); renderWeight(); renderWxSettings(); renderSettings(); renderHr(); renderInstall(); renderUpdate(); renderRaces(); bindStravaButtons(); route();
   }
   function bindStravaButtons() {
     document.querySelectorAll('[data-strava-connect]').forEach(b => {
@@ -1256,6 +1543,7 @@
     if (!plan) { try { applyPlanMd(await examplePlanMd(), 'exemplo'); } catch (e) {} }
     if (plan) { clampSelected(); if (plan.race > today) $('gRace').value = plan.race; if (plan.goalSec) $('gGoal').value = A.fmtTime(plan.goalSec); }
     renderAll();
+    fetchVer().then(v => { appVer = v; renderUpdate(); });
     loadWx().then(() => { if (plan) renderWorkout(); });
     if (extra.wx && extra.wx.name === 'sua localização') placeName(extra.wx.lat, extra.wx.lon).then(n => { if (n) { extra.wx = { ...extra.wx, name: n }; persist(); renderAll(); } });
     await checkStrava();

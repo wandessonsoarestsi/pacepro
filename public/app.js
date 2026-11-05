@@ -964,13 +964,24 @@
     $('wxChip').textContent = c.name || 'local';
     $('wxText').textContent = `Previsão de ${c.name || 'sua localização'} no horário do treino, com ajuste do ritmo pelo calor.`;
   }
+  // Nome da cidade a partir das coordenadas (serviços gratuitos, sem chave).
+  async function placeName(lat, lon) {
+    const get = async (u, pick) => { try { const r = await fetch(u, { headers: { Accept: 'application/json' } }); return r.ok ? pick(await r.json()) : null; } catch { return null; } };
+    const join = (a, b) => [a, b].filter(Boolean).filter((v, i, x) => x.indexOf(v) === i).join(', ') || null;
+    return await get(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=pt`,
+        j => join(j.city || j.locality, (j.principalSubdivisionCode || '').split('-')[1] || j.principalSubdivision))
+      || await get(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=10&accept-language=pt-BR`,
+        j => { const a = j.address || {}; return join(a.city || a.town || a.village || a.municipality, (a['ISO3166-2-lvl4'] || '').split('-')[1] || a.state); });
+  }
   $('wxHour').onchange = () => { extra.wx = { ...wxCfg(), hour: +$('wxHour').value }; persist(); renderAll(); };
   $('wxLoc').onclick = () => {
     if (!navigator.geolocation) { showToast('Seu navegador não informa a localização.', true); return; }
     $('wxLoc').disabled = true;
     navigator.geolocation.getCurrentPosition(async p => {
-      extra.wx = { ...wxCfg(), lat: +p.coords.latitude.toFixed(3), lon: +p.coords.longitude.toFixed(3), name: 'sua localização' };
-      persist(); await loadWx(true); $('wxLoc').disabled = false; renderAll(); showToast('Localização salva.');
+      const lat = +p.coords.latitude.toFixed(3), lon = +p.coords.longitude.toFixed(3);
+      const name = await placeName(lat, lon);
+      extra.wx = { ...wxCfg(), lat, lon, name: name || 'sua localização' };
+      persist(); await loadWx(true); $('wxLoc').disabled = false; renderAll(); showToast(name ? `Localização salva: ${name}.` : 'Localização salva.');
     }, () => { $('wxLoc').disabled = false; showToast('Não consegui pegar a localização.', true); }, { timeout: 10000 });
   };
 
@@ -1246,6 +1257,7 @@
     if (plan) { clampSelected(); if (plan.race > today) $('gRace').value = plan.race; if (plan.goalSec) $('gGoal').value = A.fmtTime(plan.goalSec); }
     renderAll();
     loadWx().then(() => { if (plan) renderWorkout(); });
+    if (extra.wx && extra.wx.name === 'sua localização') placeName(extra.wx.lat, extra.wx.lon).then(n => { if (n) { extra.wx = { ...extra.wx, name: n }; persist(); renderAll(); } });
     await checkStrava();
     renderSettings();
     if (strava.connected) await syncAndAnalyze(true);

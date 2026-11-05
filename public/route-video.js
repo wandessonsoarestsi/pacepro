@@ -194,10 +194,8 @@
         map.addLayer({ id: 'pp-b3d', type: 'fill-extrusion', source: 'openmaptiles', 'source-layer': 'building', minzoom: 14, paint: { 'fill-extrusion-color': '#2b313b', 'fill-extrusion-height': ['coalesce', ['get', 'render_height'], 8], 'fill-extrusion-base': ['coalesce', ['get', 'render_min_height'], 0], 'fill-extrusion-opacity': 0.9 } });
       }
       if (await demOk()) {
-        map.addSource('pp-dem', { type: 'raster-dem', tiles: [DEM], encoding: 'terrarium', tileSize: 256, maxzoom: 14 });
         map.addSource('pp-hs', { type: 'raster-dem', tiles: [DEM], encoding: 'terrarium', tileSize: 256, maxzoom: 14 });
         try { map.addLayer({ id: 'pp-hill', type: 'hillshade', source: 'pp-hs', paint: { 'hillshade-exaggeration': 0.35, 'hillshade-shadow-color': '#000' } }, map.getStyle().layers.find(l => l.type === 'line' || l.type === 'symbol')?.id); } catch (e) {}
-        try { map.setTerrain({ source: 'pp-dem', exaggeration: 1.6 }); } catch (e) {}
       }
       const full = { type: 'Feature', geometry: { type: 'LineString', coordinates: lons.map((x, i) => [x, lats[i]]) } };
       map.addSource('pp-full', { type: 'geojson', data: full });

@@ -413,3 +413,17 @@ fieldset.xtra{border:1px solid var(--line);border-radius:14px;padding:10px 12px 
 fieldset.xtra legend{font-size:12.5px;font-weight:700;color:var(--muted);padding:0 4px}
 fieldset.xtra .checks{gap:10px 18px}
 fieldset.xtra input[type=text]{background:var(--sunk);border:1px solid var(--line);border-radius:12px;padding:10px 12px;color:var(--fg);font-size:15px;width:100%;min-width:0;font-family:inherit}
+
+/* Atividades do plano atual */
+details.acts summary{cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center;gap:10px}
+details.acts summary::-webkit-details-marker{display:none}
+details.acts summary::after{content:"▾";color:var(--muted)}
+details.acts[open] summary::after{content:"▴"}
+details.acts summary span{display:flex;flex-direction:column;gap:2px;min-width:0}
+details.acts summary b{font-size:15.5px}
+details.acts[open]>*:not(summary){margin-top:12px}
+details.acts .checks{display:flex;flex-wrap:wrap;gap:10px 18px}
+details.acts .checks label{display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px}
+details.acts .checks input{width:18px;height:18px;accent-color:var(--c1)}
+details.acts input[type=text]{display:block;width:100%;background:var(--sunk);border:1px solid var(--line);border-radius:12px;padding:10px 12px;color:var(--fg);font-size:15px;font-family:inherit}
+details.acts small{display:block}

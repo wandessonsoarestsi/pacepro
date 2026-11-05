@@ -34,6 +34,13 @@
     };
   }
 
+  // Textos das atividades além da corrida (usados no gerador e no ajuste do plano atual).
+  const CROSS_TEXT = {
+    swim: { label: 'Natação', ico: '🏊', leve: 'Natação leve, 30 min', moderada: 'Natação leve a moderada, 30–40 min' },
+    bike: { label: 'Bike', ico: '🚴', leve: 'Bike leve, 30 min, giro solto', moderada: 'Bike leve a moderada, 40–50 min, giro solto' },
+    mobility: { label: 'Mobilidade', ico: '🧘', leve: 'Mobilidade e alongamento, 20 min', moderada: 'Mobilidade e alongamento, 25–30 min' }
+  };
+
   /* --- Musculação --- */
   const GYM_MD = `## Sessões de musculação (40 min cada)
 
@@ -131,11 +138,7 @@ O número de séries e repetições de cada semana está na linha em itálico ab
       : { I: 0, T: 2, E: 4, X: 1, L: 6, swim: [3] };
 
     // Outras atividades escolhidas (natação, bike, mobilidade ou outra que a pessoa escrever).
-    const CROSS = {
-      swim: { label: 'Natação', ico: '🏊', leve: 'Natação leve, 30 min', moderada: 'Natação leve a moderada, 30–40 min' },
-      bike: { label: 'Bike', ico: '🚴', leve: 'Bike leve, 30 min, giro solto', moderada: 'Bike leve a moderada, 40–50 min, giro solto' },
-      mobility: { label: 'Mobilidade', ico: '🧘', leve: 'Mobilidade e alongamento, 20 min', moderada: 'Mobilidade e alongamento, 25–30 min' }
-    };
+    const CROSS = CROSS_TEXT;
     const cross = (o.cross || (o.swim ? ['swim'] : [])).map(c => {
       if (typeof c === 'string' && CROSS[c]) return { ...CROSS[c], k: c };
       const name = String((c && c.name) || c || '').trim().slice(0, 40);
@@ -278,6 +281,6 @@ ${weeks.join('\n\n')}
 ${o.gym ? GYM_MD : ''}`;
   }
 
-  const api = { generate, vdotFrom, raceTime, paces };
+  const api = { generate, vdotFrom, raceTime, paces, GYM_MD, CROSS_TEXT };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.PlanGenerator = api;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -56,7 +56,7 @@
     box = document.createElement('div'); box.id = 'vStudio'; box.className = 'vstudio';
     box.innerHTML = `<div class="vs-bar"><button type="button" class="vs-x">‹ Voltar</button><b>Vídeo da corrida</b><span></span></div>
       <div class="vs-body"><div class="vs-stage"><canvas class="vs-canvas" width="${W}" height="${H}"></canvas><video class="vs-video" playsinline controls hidden></video><div class="vs-load" hidden><div class="vs-lrow"><i class="vs-spin"></i><b class="vs-lt">Preparando…</b><span class="vs-pct"></span></div><div class="vs-pbar"><i></i></div></div></div>
-      <p class="vs-msg muted small">Vídeo vertical de uns 20 segundos com o mapa 3D do seu percurso. Deixe o app aberto enquanto ele é gerado.</p>
+      <p class="vs-msg muted small">Vídeo vertical com o mapa 3D do seu percurso. Deixe o app aberto enquanto ele é gerado.</p>
       <div class="vs-actions">${d.kmMoments && d.kmMoments.length ? '<label class="vs-opt"><input type="checkbox" class="vs-km" checked><span><b>Análise por km</b><small>Uma parada em cada km com o que aconteceu nele</small></span></label>' : ''}<button type="button" class="btn wide vs-go">Gerar vídeo</button></div></div>
       <div class="vs-map" aria-hidden="true"></div>`;
     document.body.appendChild(box); document.body.classList.add('noscroll');
@@ -80,14 +80,17 @@
     const idxAt = m => { let lo = 0, hi = n - 1; while (hi - lo > 1) { const k = (lo + hi) >> 1; if (d.dist[k] < m) lo = k; else hi = k; } return lo; };
     const posAt = m => { const i = idxAt(m), j = Math.min(n - 1, i + 1); const f = d.dist[j] > d.dist[i] ? (m - d.dist[i]) / (d.dist[j] - d.dist[i]) : 0; return [lerp(d.lat[i], d.lat[j], f), lerp(d.lon[i], d.lon[j], f), i, f]; };
     const timeAtM = m => { const [, , i, f] = posAt(m); const j = Math.min(n - 1, i + 1); return lerp(d.time[i], d.time[j], f) - d.time[0]; };
-    let moms = [], holdsAt = [], runEnd = 0, END = 0, HOLD = T_HOLD;
+    let summary = '', moms = [], holdsAt = [], holdT = [], holdOff = [0], runEnd = 0, END = 0;
     // Linha do tempo: intro → percurso (com paradas) → final
     function setMoments(withKm) {
       const base = d.moments.filter(m => m.i > 2 && m.i < n - 3 && !(withKm && m.kmFast)).sort((a, b) => a.i - b.i).slice(0, 7);
       const kms = withKm ? (d.kmMoments || []).filter(m => m.i > 2 && m.i <= n - 1) : [];
       moms = base.concat(kms).sort((a, b) => a.i - b.i || (a.km ? 1 : 0) - (b.km ? 1 : 0));
       holdsAt = moms.map(m => d.dist[m.i]);
-      HOLD = withKm ? 2300 : T_HOLD; runEnd = T_INTRO + T_RUN + moms.length * HOLD; END = runEnd + T_OUTRO;
+      // cada parada dura o tempo de ler o cartão (~60 ms por letra), entre 1,7 s e 7 s
+      holdT = moms.map(m => Math.max(T_HOLD, Math.min(7000, 900 + 60 * (String(m.t).length + String(m.d).length))));
+      holdOff = [0]; holdT.forEach(x => holdOff.push(holdOff[holdOff.length - 1] + x));
+      runEnd = T_INTRO + T_RUN + holdOff[moms.length]; summary = d.summary || ''; END = runEnd + T_OUTRO + (summary ? Math.min(9000, 60 * summary.length) : 0);
     }
     setMoments(false);
     function stateAt(t) {
@@ -95,11 +98,11 @@
       if (t >= runEnd) return { ph: 'outro', k: Math.min(1, (t - runEnd) / T_OUTRO), m: total };
       let x = t - T_INTRO; // tempo dentro do percurso, descontando paradas
       for (let h = 0; h < holdsAt.length; h++) {
-        const tReach = (holdsAt[h] / total) * T_RUN + h * HOLD;
-        if (x < tReach) return { ph: 'run', m: ((x - h * HOLD) / T_RUN) * total, passed: h };
-        if (x < tReach + HOLD) return { ph: 'hold', m: holdsAt[h], hold: h, hk: (x - tReach) / HOLD, passed: h + 1 };
+        const tReach = (holdsAt[h] / total) * T_RUN + holdOff[h];
+        if (x < tReach) return { ph: 'run', m: ((x - holdOff[h]) / T_RUN) * total, passed: h };
+        if (x < tReach + holdT[h]) return { ph: 'hold', m: holdsAt[h], hold: h, hk: (x - tReach) / holdT[h], passed: h + 1 };
       }
-      return { ph: 'run', m: Math.min(total, ((x - holdsAt.length * HOLD) / T_RUN) * total), passed: holdsAt.length };
+      return { ph: 'run', m: Math.min(total, ((x - holdOff[holdsAt.length]) / T_RUN) * total), passed: holdsAt.length };
     }
 
     function segData(m) {
@@ -171,7 +174,7 @@
         cols.forEach(([v, l], k) => { const x = 40 + (W - 80) * (k + 0.5) / 3; txt(v, x, H - 132, 40, 800, '#fff', 'center'); txt(l, x, H - 100, 20, 600, 'rgba(255,255,255,.6)', 'center'); });
       }
       if (s.ph === 'hold') {
-        const m = moms[s.hold], a = Math.min(1, s.hk * 6, (1 - s.hk) * 6); ctx.globalAlpha = a;
+        const m = moms[s.hold], fk = holdT[s.hold] / 280, a = Math.min(1, s.hk * fk, (1 - s.hk) * fk); ctx.globalAlpha = a;
         const ch = m.km ? 182 : 150, y = 210 + (1 - a) * 20; rr(40, y, W - 80, ch, 30); ctx.fillStyle = 'rgba(15,17,21,.85)'; ctx.fill();
         if (m.km) { ctx.save(); rr(64, y + 40, 76, 50, 25); ctx.fillStyle = '#fff'; ctx.fill(); ctx.restore(); txt(m.ico, 102, y + 75, 28, 900, '#1a1d23', 'center'); }
         else pin(100, y + 75, 32, m.color, m.ico);
@@ -180,15 +183,18 @@
       }
       if (s.ph === 'outro' && s.k > 0.15) {
         const a = Math.min(1, (s.k - 0.15) * 4); ctx.globalAlpha = a;
-        const h = d.meta.ghost ? 420 : 360, y = H - h - 90;
+        ctx.font = `600 26px ${font}`; const sl = summary ? lineSplit(summary, W - 160) : [];
+        const h = (d.meta.ghost ? 420 : 360) + (sl.length ? sl.length * 34 + 30 : 0), y = H - h - 90;
         rr(40, y, W - 80, h, 34); ctx.fillStyle = 'rgba(15,17,21,.86)'; ctx.fill();
         txt(d.meta.title, 80, y + 72, 38, 900, '#fff');
         const cells = [[d.meta.km, 'km'], [d.meta.time, 'tempo'], [d.meta.pace, 'pace /km'], [d.meta.hr ? String(d.meta.hr) : '–', 'FC média']];
         cells.forEach(([v, l], k) => { const cx = 80 + (k % 2) * ((W - 160) / 2), cy = y + 160 + Math.floor(k / 2) * 110; txt(v, cx, cy, 56, 900, '#fff'); txt(l, cx, cy + 34, 22, 600, 'rgba(255,255,255,.6)'); });
+        if (sl.length) { ctx.fillStyle = 'rgba(255,255,255,.14)'; ctx.fillRect(80, y + 330, W - 160, 2); sl.forEach((l, k) => txt(l, 80, y + 378 + k * 34, 26, 600, 'rgba(255,255,255,.85)')); }
         if (d.meta.ghost) txt(d.meta.ghost, 80, y + h - 44, 26, 700, d.meta.ghostColor || '#3CC48A');
         ctx.globalAlpha = 1;
       }
     }
+    function lineSplit(t, maxW) { const out = []; let line = ''; for (const w of String(t).split(' ')) { const test = line ? line + ' ' + w : w; if (ctx.measureText(test).width > maxW && line) { out.push(line); line = w; } else line = test; } if (line) out.push(line); return out.slice(0, 7); }
     function wrap(t, x, y, maxW, size, lines) {
       ctx.font = `600 ${size}px ${font}`; ctx.fillStyle = 'rgba(255,255,255,.78)'; ctx.textAlign = 'left';
       const words = String(t).split(' '); let line = '', k = 0;

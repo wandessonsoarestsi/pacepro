@@ -23,6 +23,9 @@
   let done = {};
   let runs = [];
   let planMd = null;
+  // Dados pessoais além do plano: como foi cada treino, peso, alimentação, ajustes do plano e FC máxima.
+  const defaultExtra = () => ({ feel: {}, weights: [], diet: {}, moves: {}, skips: {}, soft: {}, dismiss: {}, hrMax: null });
+  let extra = defaultExtra();
   const userKey = k => `pp.local.${k}`;
   let strava = { connected: false, configured: true, athlete: null, checked: false };
   const today = isoLocal(new Date());
@@ -34,7 +37,38 @@
     planMd = md || null;
     plan = null;
     if (md) { try { const p = P.parse(md); if (p.days.length) { plan = p; planSource = source || 'salvo'; } } catch (e) {} }
+    if (plan) { plan.base = plan.days.map(d => ({ ...d })); plan.weeks.forEach(w => { w.dates = w.days.map(x => x.date); }); applyAdjust(); }
   }
+
+  /* ---------- Ajustes do plano (treino remarcado, pulado ou aliviado) ---------- */
+  const isRunType = t => !['swim', 'rest'].includes(t);
+  // Treino forte: intervalado, limiar, teste ou o longo do fim de semana.
+  const isHard = d => !!d && (['interval', 'threshold', 'test'].includes(d.type) || (d.type === 'easy' && d.key && [0, 6].includes(D(d.date).getDay())));
+  function applyAdjust() {
+    if (!plan) return;
+    const base = {}; plan.base.forEach(d => { base[d.date] = d; });
+    const movedTo = {}; Object.entries(extra.moves).forEach(([to, from]) => { movedTo[from] = to; });
+    const fmtD = dt => `${WD[D(dt).getDay()]} ${ddmm(dt)}`;
+    plan.days = plan.base.map(d0 => {
+      let d = { ...d0 };
+      const from = extra.moves[d.date];
+      if (from && base[from]) {
+        const f = base[from];
+        d = { ...d, type: f.type, title: f.title, rua: f.rua, esteira: f.esteira, targetPace: f.targetPace, key: f.key, movedFrom: from };
+      } else if (movedTo[d.date]) {
+        d = { ...d, type: 'rest', title: 'Treino remarcado', rua: `Este treino foi passado para ${fmtD(movedTo[d.date])}.`, esteira: '', targetPace: null, key: false, movedTo: movedTo[d.date] };
+      } else if (extra.skips[d.date]) {
+        d = { ...d, type: 'rest', title: 'Treino pulado', rua: 'Treino pulado para não acumular cansaço. Siga a semana normalmente.', esteira: '', targetPace: null, key: false, skipped: true };
+      }
+      if (extra.soft[d.date] && isRunType(d.type) && d.type !== 'race') {
+        d = { ...d, type: 'easy', title: 'Leve (aliviado)', rua: "30–40' leve pela FC (até ~145)", esteira: '', targetPace: null, key: false, softened: d.title };
+      }
+      return d;
+    });
+    const by = {}; plan.days.forEach(d => { by[d.date] = d; });
+    plan.weeks.forEach(w => { w.days = w.dates.map(dt => by[dt]).filter(Boolean); });
+  }
+  function refreshAdjust() { applyAdjust(); persist(); renderAll(); }
   function setPlanMd(md, source) {
     applyPlanMd(md, source);
     planWeek = null; selected = today; if (plan) clampSelected();
@@ -49,7 +83,7 @@
     saveTimer = setTimeout(saveNow, 600);
   }
   function saveNow() {
-    store.set(userKey('state'), { plan_md: planMd, done, updated_at: new Date().toISOString() });
+    store.set(userKey('state'), { plan_md: planMd, done, extra, updated_at: new Date().toISOString() });
   }
   function loadState() {
     let row = store.get(userKey('state'), null);
@@ -58,6 +92,7 @@
       if (legacyPlan || legacyDone) row = { plan_md: legacyPlan, done: legacyDone || {} };
     }
     done = (row && row.done) || {};
+    extra = { ...defaultExtra(), ...((row && row.extra) || {}) };
     applyPlanMd(row && row.plan_md, 'salvo');
     runs = store.get(userKey('runs'), []);
   }
@@ -202,6 +237,9 @@
     if (day.type === 'swim') html += `<div class="blk swim"><span class="k">Natação</span><b>${esc(day.title)}</b><p class="note">Técnica e respiração, sem séries fortes.</p></div>`;
     if (day.gym) html += gymBlock(day.gym, day);
     if (day.type === 'rest' && !day.gym) html += `<div class="blk rest"><span class="k">Descanso</span><p class="note">${esc(day.rua && !/^descanso$/i.test(day.rua) ? day.rua : 'Descanso total. Sono, água e boa comida.')}</p></div>`;
+    const adj = day.movedFrom ? `Treino de ${WD[D(day.movedFrom).getDay()]} ${ddmm(day.movedFrom)} remarcado para hoje.` : day.movedTo ? '' : day.skipped ? '' : day.softened ? `Era "${day.softened}". Trocado por leve para recuperar.` : '';
+    if (day.movedFrom || day.movedTo || day.skipped || day.softened) html += `<div class="blk adj"><span class="k">Plano ajustado</span>${adj ? `<p class="note">${esc(adj)}</p>` : ''}<button class="linkbtn" id="undoAdj" type="button">Desfazer ajuste</button></div>`;
+    if (day.type === 'race') html += `<div class="blk run"><span class="k">Plano de prova</span><p class="note">Ritmo por km, aquecimento e checklist do dia.</p><a class="linkbtn" href="#progresso" data-goto="raceCard">Ver o plano de prova</a></div>`;
     html += `</div>`;
 
     if (day.type !== 'rest' || day.gym) {
@@ -209,10 +247,20 @@
       else html += `<div class="row-actions"><button class="btn" id="finish" type="button">Marcar como finalizado</button></div>`;
     }
     html += `<div id="finishArea"></div>`;
+    if (st && day.type !== 'rest') html += feelHtml(day.date);
     el.innerHTML = html;
+    bindFeel(day.date);
+    const ua = $('undoAdj'); if (ua) ua.onclick = () => {
+      if (day.movedFrom) delete extra.moves[day.date];
+      if (day.movedTo) delete extra.moves[day.movedTo];
+      if (day.skipped) delete extra.skips[day.date];
+      if (day.softened) delete extra.soft[day.date];
+      refreshAdjust();
+    };
+    el.querySelectorAll('[data-goto]').forEach(a => a.onclick = () => setTimeout(() => { const t = $(a.dataset.goto); if (t) t.scrollIntoView({ block: 'start' }); }, 50));
 
     const f = $('finish'); if (f) f.onclick = () => finish(day);
-    const u = $('undo'); if (u) u.onclick = () => { delete done[day.date]; persist(); renderAll(); };
+    const u = $('undo'); if (u) u.onclick = () => { if (st && st.auto) extra.dismiss['a' + day.date] = true; delete done[day.date]; persist(); renderAll(); };
     const r = $('redo'); if (r) r.onclick = () => finish(day, true);
     renderAnalysis(day);
   }
@@ -277,7 +325,7 @@
     const bars = a.splits.length >= 2 ? `<div class="bars" aria-label="Ritmo por km">${a.splits.map(s => `<i title="${A.fmtPace(s.pace)}/km" style="height:${(30 + 70 * (maxP - s.pace) / Math.max(1, maxP - minP)).toFixed(0)}%"></i>`).join('')}</div><p class="muted small">Ritmo por km (barra mais alta = mais rápido): ${a.splits.map(s => A.fmtPace(s.pace)).join(' · ')}</p>` : '';
     box.innerHTML = `<div class="card-head"><div><span class="eyebrow">Análise do treino</span><h3>${esc(a.headline)}</h3></div><span class="chip ${tone}">${label}</span></div>` +
       `<div class="metrics"><div class="metric"><span>Distância</span><b>${m.distKm.toFixed(2).replace('.', ',')}</b></div><div class="metric"><span>Tempo</span><b>${A.fmtTime(m.time)}</b></div><div class="metric"><span>Ritmo</span><b>${m.pace ? A.fmtPace(m.pace) : '–'}</b></div><div class="metric"><span>FC</span><b>${m.hr || '–'}</b></div></div>` +
-      bars + `<ul class="points">${a.points.map(p => `<li class="${p.tone}">${esc(p.txt)}</li>`).join('')}</ul>` +
+      bars + (() => { const Z = hrZones(); const zb = Z ? zoneBar(zoneTimes(a.splits, Z)) : ''; return zb ? `<div><span class="eyebrow">Tempo por zona de FC</span>${zb}</div>` : ''; })() + `<ul class="points">${a.points.map(p => `<li class="${p.tone}">${esc(p.txt)}</li>`).join('')}</ul>` +
       (a.estimateSec ? `<p class="msg good">Este treino indica ${A.fmtTime(a.estimateSec)} nos ${distKm()} km (${esc(a.estimateBasis)}). A estimativa foi atualizada.</p>` : '') +
       (st.activityId ? `<a class="muted small" href="https://www.strava.com/activities/${encodeURIComponent(st.activityId)}" target="_blank" rel="noopener">Ver no Strava ↗</a>` : '');
     box.hidden = false;
@@ -351,7 +399,7 @@
     else { chip.textContent = 'desconectado'; chip.className = 'chip'; }
     const synced = store.get(userKey('synced'), null);
     $('stravaText').textContent = strava.connected
-      ? `${strava.athlete && strava.athlete.name ? strava.athlete.name + ' · ' : ''}${synced ? 'última sincronização ' + new Date(synced).toLocaleString('pt-BR', { timeZone: TZ, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'ainda não sincronizado'}.`
+      ? `${strava.athlete && strava.athlete.name ? strava.athlete.name + ' · ' : ''}${synced ? 'última sincronização ' + new Date(synced).toLocaleString('pt-BR', { timeZone: TZ, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'ainda não sincronizado'}. Os treinos do plano são analisados sozinhos quando você abre o app.`
       : strava.configured === false ? 'O Strava ainda não foi configurado neste site (faltam as chaves da API no Vercel).' : 'Conecte para puxar seus treinos e atualizar a estimativa.';
     $('stravaConnect').hidden = strava.connected;
     $('stravaSync').hidden = !strava.connected;
@@ -366,7 +414,7 @@
     if (t === 'system') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme', t);
     renderSettings();
   });
-  $('stravaSync').onclick = async () => { $('stravaSync').disabled = true; try { await syncRuns(); } catch (e) {} $('stravaSync').disabled = false; renderAll(); };
+  $('stravaSync').onclick = async () => { $('stravaSync').disabled = true; await syncAndAnalyze(false); $('stravaSync').disabled = false; renderAll(); };
   $('stravaOut').onclick = async () => { try { await api('/api/strava/logout', { method: 'POST' }); } catch (e) {} strava.connected = false; runs = []; store.set(userKey('runs'), runs); renderAll(); };
   $('mdFile').onchange = async e => {
     const file = e.target.files[0]; if (!file) return;
@@ -430,6 +478,279 @@
     };
   })();
 
+  /* ---------- Como foi o treino ---------- */
+  let feelEditing = null, feelDraft = {};
+  function feelHtml(date) {
+    const f = extra.feel[date];
+    if (f && feelEditing !== date) {
+      return `<div class="feel-sum"><span>Esforço <b>${f.rpe}/10</b> · Dor <b>${esc(f.pain)}</b>${f.sleep ? ` · Sono <b>${f.sleep >= 9 ? '9h+' : f.sleep <= 5 ? '5h ou menos' : f.sleep + 'h'}</b>` : ''}</span><button class="linkbtn" id="feelEdit" type="button">editar</button></div>`;
+    }
+    feelDraft = { ...(f || {}) };
+    const btns = (id, opts) => `<div class="seg" id="${id}">${opts.map(([v, l]) => `<button type="button" data-v="${v}" aria-pressed="false">${l}</button>`).join('')}</div>`;
+    return `<div class="feel" id="feel"><span class="eyebrow">Como foi?</span>` +
+      `<div class="flbl">Esforço <small class="muted">1 = muito fácil · 10 = máximo</small></div>` + btns('fRpe', [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => [n, n])) +
+      `<div class="flbl">Dor</div>` + btns('fPain', [['nenhuma', 'Nenhuma'], ['leve', 'Leve'], ['forte', 'Forte']]) +
+      `<div class="flbl">Sono na última noite</div>` + btns('fSleep', [[5, '≤5h'], [6, '6h'], [7, '7h'], [8, '8h'], [9, '9h+']]) +
+      `<div class="row-actions"><button class="btn" id="fSave" type="button">Salvar</button>${f ? '<button class="btn ghost" id="fCancel" type="button">Cancelar</button>' : ''}</div></div>`;
+  }
+  function bindFeel(date) {
+    const e = $('feelEdit'); if (e) e.onclick = () => { feelEditing = date; renderWorkout(); };
+    if (!$('feel')) return;
+    const sync = () => {
+      [['fRpe', 'rpe'], ['fPain', 'pain'], ['fSleep', 'sleep']].forEach(([id, k]) => $(id).querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(String(feelDraft[k]) === b.dataset.v))));
+      $('fSave').disabled = !(feelDraft.rpe && feelDraft.pain);
+    };
+    [['fRpe', 'rpe', Number], ['fPain', 'pain', String], ['fSleep', 'sleep', Number]].forEach(([id, k, cast]) => $(id).querySelectorAll('button').forEach(b => b.onclick = () => { feelDraft[k] = cast(b.dataset.v); sync(); }));
+    $('fSave').onclick = () => { extra.feel[date] = { rpe: feelDraft.rpe, pain: feelDraft.pain, sleep: feelDraft.sleep || null }; feelEditing = null; persist(); renderAll(); };
+    const c = $('fCancel'); if (c) c.onclick = () => { feelEditing = null; renderWorkout(); };
+    sync();
+  }
+  // Sinais de cansaço a partir do que foi registrado nos últimos dias.
+  function fatigue() {
+    const recent = Object.entries(extra.feel).filter(([d]) => d <= today && d >= addDays(today, -4)).sort((a, b) => a[0].localeCompare(b[0]));
+    const why = [];
+    const last = recent.slice(-3);
+    if (last.length >= 2 && last.reduce((s, [, f]) => s + f.rpe, 0) / last.length >= 8) why.push('esforço muito alto nos últimos treinos');
+    const strong = recent.some(([d, f]) => f.pain === 'forte' && d >= addDays(today, -2));
+    if (strong) why.push('dor forte');
+    else if (recent.filter(([, f]) => f.pain === 'leve').length >= 2) why.push('dor leve repetida');
+    if (recent.filter(([, f]) => f.sleep && f.sleep <= 5).length >= 2) why.push('poucas horas de sono');
+    return { why, strong };
+  }
+
+  /* ---------- Sugestão de ajuste na tela Hoje ---------- */
+  function suggestion() {
+    if (!plan) return null;
+    // 1) treino-chave dos últimos 3 dias que ficou sem fazer
+    for (let i = 1; i <= 3; i++) {
+      const dt = addDays(today, -i), d = dayOf(dt);
+      if (!d || dt < firstDay() || !isHard(d) || done[dt] || extra.dismiss[dt]) continue;
+      const w = plan.weeks.find(x => x.n === d.week);
+      const hardAt = x => isHard(dayOf(x));
+      const free = w.days.filter(x => x.date >= today && x.date < addDays(raceISO(), -2) && isRunType(x.type) && !isHard(x) && x.type !== 'race' && !done[x.date] && !extra.moves[x.date]);
+      const target = d.movedFrom ? null : free.find(x => !hardAt(addDays(x.date, -1)) && !hardAt(addDays(x.date, 1)) && !(done[addDays(x.date, -1)] && isHard(dayOf(addDays(x.date, -1)))));
+      return { kind: 'missed', date: dt, day: d, target };
+    }
+    // 2) cansaço acumulado: aliviar o próximo treino forte
+    const f = fatigue();
+    if (f.why.length) {
+      for (let i = 0; i <= 2; i++) {
+        const dt = addDays(today, i), d = dayOf(dt);
+        if (d && isHard(d) && !done[dt] && !extra.dismiss['f' + dt]) return { kind: 'fatigue', date: dt, day: d, why: f.why, strong: f.strong };
+      }
+    }
+    return null;
+  }
+  function renderAdjust() {
+    const box = $('adjust');
+    const sg = selected === today ? suggestion() : null;
+    if (!sg) { box.hidden = true; return; }
+    const fmtD = dt => `${WDL[D(dt).getDay()].toLowerCase()}, ${ddmm(dt)}`;
+    let html;
+    if (sg.kind === 'missed') {
+      html = `<span class="eyebrow">Ajuste do plano</span><h3>Ficou faltando: ${esc(sg.day.title)}</h3>` +
+        (sg.target ? `<p class="muted">Era um treino-chave de ${fmtD(sg.date)}. Dá para encaixar na ${fmtD(sg.target.date)}, no lugar do treino leve, sem colar em outro treino forte.</p>`
+          : `<p class="muted">Era um treino-chave de ${fmtD(sg.date)}. Não há um dia bom nesta semana para encaixar sem colar em outro treino forte. O melhor é pular e seguir a semana.</p>`) +
+        `<div class="row-actions">${sg.target ? `<button class="btn" id="adjMove" type="button">Passar para ${WD[D(sg.target.date).getDay()]} ${ddmm(sg.target.date)}</button>` : ''}<button class="btn ${sg.target ? 'ghost' : ''}" id="adjSkip" type="button">Pular este treino</button><button class="btn ghost" id="adjLater" type="button">Agora não</button></div>`;
+    } else {
+      html = `<span class="eyebrow">Ajuste do plano</span><h3>Sinais de cansaço</h3><p class="muted">Você registrou ${esc(sg.why.join(', '))}. Sugestão: trocar "${esc(sg.day.title)}" de ${fmtD(sg.date)} por um treino leve.${sg.strong ? ' Se a dor continuar, procure uma avaliação antes de voltar aos treinos fortes.' : ''}</p>` +
+        `<div class="row-actions"><button class="btn" id="adjSoft" type="button">Trocar por leve</button><button class="btn ghost" id="adjLater" type="button">Manter o treino</button></div>`;
+    }
+    box.innerHTML = html; box.hidden = false;
+    const mv = $('adjMove'); if (mv) mv.onclick = () => { extra.moves[sg.target.date] = sg.day.movedFrom || sg.date; refreshAdjust(); showToast('Treino remarcado.'); };
+    const sk = $('adjSkip'); if (sk) sk.onclick = () => { if (sg.day.movedFrom) { delete extra.moves[sg.date]; extra.skips[sg.day.movedFrom] = true; } else extra.skips[sg.date] = true; refreshAdjust(); };
+    const so = $('adjSoft'); if (so) so.onclick = () => { extra.soft[sg.date] = true; refreshAdjust(); showToast('Treino trocado por leve.'); };
+    $('adjLater').onclick = () => { extra.dismiss[(sg.kind === 'fatigue' ? 'f' : '') + sg.date] = true; persist(); renderAll(); };
+  }
+
+  /* ---------- Análise automática pelo Strava ---------- */
+  async function autoAnalyze() {
+    if (!strava.connected || !plan) return 0;
+    const from = addDays(today, -7) > firstDay() ? addDays(today, -7) : firstDay();
+    let n = 0;
+    for (const d of plan.days) {
+      if (d.date < from || d.date > today || done[d.date] || !isRunType(d.type) || extra.dismiss['a' + d.date]) continue;
+      const r = runs.filter(x => x.date === d.date).sort((a, b) => b.km - a.km)[0];
+      if (!r) continue;
+      try {
+        const act = await api(`/api/strava/activity?id=${encodeURIComponent(r.stravaId)}`);
+        done[d.date] = { at: Date.now(), activityId: act.id, name: act.name, analysis: A.analyze(act, d, { goalSec: goalSec(), distanceKm: distKm() }), auto: true };
+        n++;
+      } catch (e) { if (e.status === 401 || e.status === 429) break; }
+      if (n >= 4) break;
+    }
+    if (n) persist();
+    return n;
+  }
+  let lastAuto = 0;
+  async function syncAndAnalyze(quiet) {
+    if (!strava.connected) return;
+    lastAuto = Date.now();
+    try { await syncRuns(); } catch (e) { return; }
+    const n = await autoAnalyze();
+    renderAll();
+    if (n) showToast(n === 1 ? '1 treino analisado automaticamente pelo Strava.' : `${n} treinos analisados automaticamente pelo Strava.`);
+    else if (!quiet) showToast('Strava sincronizado.');
+  }
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && Date.now() - lastAuto > 10 * 60 * 1000) syncAndAnalyze(true); });
+
+  /* ---------- Zonas de frequência cardíaca ---------- */
+  const ZCOL = ['var(--z1)', 'var(--c3)', 'var(--good)', 'var(--c2)', 'var(--bad)'];
+  function observedMaxHr() {
+    let m = 0;
+    Object.values(done).forEach(v => { if (v && v.analysis && v.analysis.metrics && v.analysis.metrics.maxHr) m = Math.max(m, v.analysis.metrics.maxHr); });
+    return m >= 150 ? m : null;
+  }
+  function hrZones() {
+    const fromMax = (max, src) => ({ src, max, z: [[.5, .6], [.6, .7], [.7, .8], [.8, .9], [.9, 1]].map(([a, b]) => [Math.round(max * a), Math.round(max * b)]) });
+    if (extra.hrMax) return fromMax(extra.hrMax, 'pela FC máxima informada');
+    const m = plan && /Z1\s*(\d{2,3})\s*[–-]\s*(\d{2,3})[^\n]*?Z2\s*(\d{2,3})\s*[–-]\s*(\d{2,3})[^\n]*?Z3\s*(\d{2,3})\s*[–-]\s*(\d{2,3})[^\n]*?Z4\s*(\d{2,3})\s*[–-]\s*(\d{2,3})[^\n]*?Z5\s*(\d{2,3})\s*[–-]\s*(\d{2,3})/.exec(plan.raw);
+    if (m) { const v = m.slice(1).map(Number); return { src: 'do plano', max: v[9], z: [0, 1, 2, 3, 4].map(i => [v[2 * i], v[2 * i + 1]]) }; }
+    const o = observedMaxHr();
+    return o ? fromMax(o, 'pela maior FC dos seus treinos') : null;
+  }
+  const zoneOf = (hr, Z) => { for (let i = 0; i < 4; i++) if (hr < Z.z[i][1]) return i; return 4; };
+  function zoneTimes(splits, Z) {
+    const t = [0, 0, 0, 0, 0];
+    (splits || []).forEach(s => { if (s.hr && s.pace) t[zoneOf(s.hr, Z)] += s.pace; });
+    return t;
+  }
+  function zoneBar(t) {
+    const tot = t.reduce((a, b) => a + b, 0); if (!tot) return '';
+    return `<div class="zbar">${t.map((v, i) => v ? `<i style="width:${(100 * v / tot).toFixed(1)}%;background:${ZCOL[i]}"></i>` : '').join('')}</div>` +
+      `<div class="zleg">${t.map((v, i) => !v ? '' : `<span><i style="background:${ZCOL[i]}"></i>Z${i + 1} ${Math.round(100 * v / tot)}%</span>`).join('')}</div>`;
+  }
+  function renderZones() {
+    const box = $('zonesCard'); const Z = hrZones();
+    if (!Z) { box.innerHTML = `<div class="card-head"><h2>Zonas de FC</h2></div><p class="muted small">As zonas aparecem quando houver treinos analisados com frequência cardíaca, ou quando você informar sua FC máxima em Ajustes.</p>`; return; }
+    const from = addDays(today, -28), t = [0, 0, 0, 0, 0]; let n = 0;
+    Object.entries(done).forEach(([d, v]) => { if (d >= from && v && v.analysis && v.analysis.splits) { const z = zoneTimes(v.analysis.splits, Z); if (z.some(Boolean)) { n++; z.forEach((x, i) => { t[i] += x; }); } } });
+    const tot = t.reduce((a, b) => a + b, 0), easy = tot ? Math.round(100 * (t[0] + t[1]) / tot) : 0;
+    box.innerHTML = `<div class="card-head"><h2>Zonas de FC</h2><span class="muted small">últimos 28 dias</span></div>` +
+      (tot ? zoneBar(t) + `<p class="muted small">${n} treino${n > 1 ? 's' : ''} com FC. ${easy}% do tempo em Z1–Z2. Para 5 km, o ideal é 70–80% fácil e o resto forte.${easy < 60 ? ' Seus leves podem estar fortes demais.' : ''}</p>` : '<p class="muted small">Ainda não há treinos analisados com FC nesse período.</p>') +
+      `<div class="ztable">${Z.z.map(([a, b], i) => `<span><i style="background:${ZCOL[i]}"></i>Z${i + 1}</span><b>${a}–${b}</b>`).join('')}</div><p class="muted small">Zonas ${esc(Z.src)}.</p>`;
+  }
+  function renderHr() {
+    const Z = hrZones();
+    $('hrChip').textContent = Z ? (extra.hrMax ? 'informada' : Z.src === 'do plano' ? 'do plano' : 'estimada') : 'sem dados';
+    $('hrText').textContent = Z ? `Zonas ${Z.src}: ${Z.z.map(([a, b], i) => `Z${i + 1} ${a}–${b}`).join(' · ')}.` : 'Informe sua FC máxima (de um teste ou do relógio) para calcular as zonas.';
+    if (document.activeElement !== $('hrMax')) $('hrMax').value = extra.hrMax || '';
+  }
+  $('hrForm').onsubmit = e => {
+    e.preventDefault();
+    const v = parseInt($('hrMax').value, 10);
+    if ($('hrMax').value.trim() && !(v >= 140 && v <= 220)) { showToast('Informe uma FC máxima entre 140 e 220.', true); return; }
+    extra.hrMax = v || null; persist(); renderAll(); showToast(v ? 'FC máxima salva.' : 'FC máxima removida.');
+  };
+
+  /* ---------- Plano de prova ---------- */
+  function racePlan() {
+    const dist = distKm(), goal = goalSec();
+    const est = estimateAt(today), proj = est ? A.project(est.sec, today, raceISO()) : null;
+    let target = goal, note;
+    if (!proj) note = 'Sem corridas recentes, o plano usa a sua meta. Ele se ajusta sozinho conforme os treinos forem analisados.';
+    else if (proj <= goal) { target = goal - Math.round(dist); note = `Sua projeção (${A.fmtTime(proj)}) está dentro da meta. Mire ${A.fmtTime(target)} para ter uma pequena folga.`; }
+    else if (proj - goal <= 60) note = `Sua projeção (${A.fmtTime(proj)}) está perto da meta. Dá para buscar ${A.fmtTime(goal)} se o teste confirmar.`;
+    else { target = Math.round(proj / 5) * 5; note = `Hoje a projeção é ${A.fmtTime(proj)}. Largar no ritmo da meta pode te fazer quebrar no meio. Mire ${A.fmtTime(target)} e ajuste depois do teste.`; }
+    const n = Math.ceil(dist - 1e-9), segs = [];
+    for (let k = 1; k <= n; k++) segs.push(Math.min(1, dist - (k - 1)));
+    const off = segs.map((_, i) => i === 0 ? 3 : i === n - 1 ? -3 : i === n - 2 && n > 3 ? -1 : 0);
+    const base = (target - off.reduce((s, o, i) => s + o * segs[i], 0)) / dist;
+    let acc = 0;
+    const rows = segs.map((len, i) => { const pace = base + off[i]; acc += pace * len; return { km: i + 1, len, pace, acc }; });
+    return { target, note, rows, proj };
+  }
+  function planSection(re) {
+    if (!plan || !plan.raw) return '';
+    const lines = plan.raw.split('\n'); const i = lines.findIndex(l => /^#{2,3}\s/.test(l) && re.test(l));
+    if (i < 0) return '';
+    const lvl = lines[i].match(/^#+/)[0].length; const out = [];
+    for (let j = i + 1; j < lines.length; j++) { const m = lines[j].match(/^(#+)\s/); if (m && m[1].length <= lvl) break; if (/^---\s*$/.test(lines[j])) break; out.push(lines[j]); }
+    return out.join('\n').trim();
+  }
+  function renderRace() {
+    const box = $('raceCard'); if (!plan) { box.innerHTML = ''; return; }
+    const r = racePlan(), dist = distKm();
+    const show = dist > 10 ? r.rows.filter(x => x.km % 5 === 0 || x.km === r.rows.length) : r.rows;
+    const sec = planSection(/estrat[ée]gia de prova/i);
+    box.innerHTML = `<div class="card-head"><div><span class="eyebrow">Plano de prova · ${ddmm(raceISO())}</span><h3>Alvo: ${A.fmtTime(r.target)}</h3></div><span class="chip key">${A.fmtPace(r.target / dist)}/km</span></div>` +
+      `<p class="muted small">${esc(r.note)}</p>` +
+      `<div class="tbl"><table><thead><tr><th>Km</th><th>Ritmo</th><th>Acumulado</th></tr></thead><tbody>${show.map(x => `<tr><td>${x.len < 1 ? `${x.km - 1 + +x.len.toFixed(1)}`.replace('.', ',') : x.km}</td><td>${A.fmtPace(x.pace)}/km</td><td>${A.fmtTime(Math.round(x.acc))}</td></tr>`).join('')}</tbody></table></div>` +
+      `<p class="muted small">O relógio costuma marcar um pouco mais que a distância oficial. Mire 3–5 s/km mais rápido do que a tabela no relógio.</p>` +
+      `<div class="checks2">` +
+      `<div><b>Véspera</b><ul><li>Jantar com carboidrato que você já conhece</li><li>Separar roupa, tênis, número e chip</li><li>Dormir cedo, sem treino</li></ul></div>` +
+      `<div><b>Manhã da prova</b><ul><li>Café da manhã 2–3 h antes, já testado em treino</li><li>Água aos poucos, sem exagero</li><li>Chegar 45 min antes</li></ul></div>` +
+      `<div><b>Largada</b><ul><li>10 min de trote leve + 3 acelerações curtas</li><li>Largar no meio do pelotão, sem ziguezague</li><li>Km 1 levemente mais lento que o alvo</li></ul></div>` +
+      `<div><b>Durante</b><ul><li>Olhar o ritmo médio a cada km</li><li>Km 3 é o mais duro de cabeça: só mantenha</li><li>Último km com tudo o que sobrar</li></ul></div>` +
+      `</div>` +
+      (sec && window.marked ? `<details class="prose"><summary>Estratégia do seu plano</summary>${window.marked.parse(sec)}</details>` : '');
+  }
+
+  /* ---------- Alimentação e peso ---------- */
+  const DIET = ['Proteína em todas as refeições', '2 a 3 litros de água', 'Frutas e verduras no almoço e no jantar', 'Carboidrato antes e depois do treino forte', 'Sem álcool e sem ultraprocessados'];
+  function renderDiet() {
+    const box = $('dietCard');
+    if (!plan || selected !== today) { box.hidden = true; return; }
+    const got = extra.diet[today] || [];
+    let week = 0; for (let i = 0; i < 7; i++) { const g = extra.diet[addDays(today, -i)] || []; if (g.length >= 4) week++; }
+    const lw = extra.weights.slice(-1)[0];
+    const weigh = !lw || lw.date <= addDays(today, -7);
+    box.innerHTML = `<div class="card-head"><h2>Alimentação de hoje</h2><span class="chip ${got.length >= 4 ? 'good' : ''}">${got.length}/${DIET.length}</span></div>` +
+      `<div class="checklist">${DIET.map((t, i) => `<button type="button" class="ck" data-i="${i}" aria-pressed="${got.includes(i)}"><span class="box"></span>${esc(t)}</button>`).join('')}</div>` +
+      `<p class="muted small">Últimos 7 dias: ${week} dia${week === 1 ? '' : 's'} com 4 ou mais itens.</p>` +
+      (weigh ? `<p class="msg">${lw ? 'Já faz uma semana desde a última pesagem.' : 'Registre seu peso para acompanhar a evolução.'} Pese-se em jejum, sempre no mesmo dia e horário. <a href="#progresso" data-goto="weightCard">Registrar peso</a></p>` : '');
+    box.hidden = false;
+    box.querySelectorAll('.ck').forEach(b => b.onclick = () => {
+      const i = +b.dataset.i, cur = new Set(extra.diet[today] || []);
+      cur.has(i) ? cur.delete(i) : cur.add(i);
+      extra.diet[today] = [...cur].sort(); persist(); renderDiet();
+    });
+    box.querySelectorAll('[data-goto]').forEach(a => a.onclick = () => setTimeout(() => { const t = $(a.dataset.goto); if (t) t.scrollIntoView({ block: 'start' }); }, 50));
+  }
+  const fmtKg = v => v.toFixed(1).replace('.', ',');
+  function renderWeight() {
+    const box = $('weightCard'); const W = extra.weights;
+    const last = W[W.length - 1], first = W[0];
+    let chart = '';
+    if (W.length >= 2) {
+      const pts = W.slice(-12), lo = Math.min(...pts.map(p => p.kg)) - 0.5, hi = Math.max(...pts.map(p => p.kg)) + 0.5;
+      const X = i => 10 + i * (280 / Math.max(1, pts.length - 1)), Y = v => 8 + (hi - v) / (hi - lo) * 64;
+      chart = `<svg class="spark" viewBox="0 0 300 80" aria-hidden="true"><path d="${pts.map((p, i) => `${i ? 'L' : 'M'}${X(i).toFixed(1)},${Y(p.kg).toFixed(1)}`).join(' ')}" fill="none" stroke="var(--c1)" stroke-width="2.5" stroke-linejoin="round"/>${pts.map((p, i) => `<circle cx="${X(i).toFixed(1)}" cy="${Y(p.kg).toFixed(1)}" r="3.5" fill="var(--card)" stroke="var(--c1)" stroke-width="2"/>`).join('')}</svg>`;
+    }
+    const diff = last && first && last !== first ? last.kg - first.kg : null;
+    box.innerHTML = `<div class="card-head"><h2>Peso</h2>${last ? `<span class="chip">${fmtKg(last.kg)} kg</span>` : ''}</div>` +
+      (diff != null ? `<p class="muted small">${diff <= 0 ? 'Menos' : 'Mais'} ${fmtKg(Math.abs(diff))} kg desde ${ddmm(first.date)}. Cada kg a menos vale ~4–6 s/km na corrida.</p>` : '<p class="muted small">Pese-se 1× por semana, em jejum, no mesmo dia e horário.</p>') +
+      chart +
+      `<form class="wform" id="wForm" novalidate><input id="wKg" type="text" inputmode="decimal" placeholder="Peso de hoje (kg)" aria-label="Peso de hoje em kg"><button class="btn" type="submit">Salvar</button></form>` +
+      (W.length ? `<div class="wlist">${W.slice(-5).reverse().map(w => `<span>${ddmm(w.date)}</span><b>${fmtKg(w.kg)} kg</b><button type="button" class="linkbtn" data-del="${w.date}" aria-label="Apagar">apagar</button>`).join('')}</div>` : '');
+    $('wForm').onsubmit = e => {
+      e.preventDefault();
+      const v = parseFloat($('wKg').value.replace(',', '.'));
+      if (!(v >= 30 && v <= 250)) { showToast('Informe o peso em kg, como 82,4.', true); return; }
+      extra.weights = extra.weights.filter(w => w.date !== today).concat({ date: today, kg: Math.round(v * 10) / 10 }).sort((a, b) => a.date.localeCompare(b.date));
+      persist(); renderWeight(); renderDiet(); showToast('Peso registrado.');
+    };
+    box.querySelectorAll('[data-del]').forEach(b => b.onclick = () => { extra.weights = extra.weights.filter(w => w.date !== b.dataset.del); persist(); renderWeight(); });
+  }
+
+  /* ---------- Instalar como app ---------- */
+  let installEvt = null;
+  window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; renderInstall(); });
+  window.addEventListener('appinstalled', () => { installEvt = null; renderInstall(); });
+  function renderInstall() {
+    const standalone = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+    const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    $('installChip').textContent = standalone ? 'instalado' : 'no navegador';
+    $('installChip').className = standalone ? 'chip good' : 'chip';
+    $('installText').textContent = standalone ? 'Você está usando o app instalado. Ele funciona sem internet; o Strava sincroniza quando a conexão voltar.'
+      : ios ? 'No iPhone: abra este site no Safari, toque em Compartilhar (quadrado com seta para cima) e depois em "Adicionar à Tela de Início". No app instalado, conecte o Strava de novo e use o backup para levar seus dados.'
+      : installEvt ? 'Instale o PacePro na tela inicial: ele abre em tela cheia e funciona sem internet.'
+      : 'No Android, use o menu do Chrome (⋮) e toque em "Instalar app" ou "Adicionar à tela inicial".';
+    $('installBtn').hidden = !installEvt || standalone;
+  }
+  $('installBtn').onclick = async () => { if (!installEvt) return; installEvt.prompt(); try { await installEvt.userChoice; } catch (e) {} installEvt = null; renderInstall(); };
+  if ('serviceWorker' in navigator && location.protocol === 'https:') window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
+
   /* ---------- Rotas ---------- */
   const VIEWS = ['hoje', 'plano', 'progresso', 'ajustes'];
   function route() {
@@ -446,8 +767,8 @@
     const has = !!plan;
     document.querySelectorAll('[data-no-plan]').forEach(el => { el.hidden = has; });
     document.querySelectorAll('[data-needs-plan]').forEach(el => { el.hidden = !has; });
-    if (has) { renderTop(); renderSummary(); renderWorkout(); renderPlan(); }
-    renderProgress(); renderSettings(); bindStravaButtons(); route();
+    if (has) { renderTop(); renderSummary(); renderAdjust(); renderWorkout(); renderDiet(); renderPlan(); renderRace(); }
+    renderProgress(); renderZones(); renderWeight(); renderSettings(); renderHr(); renderInstall(); bindStravaButtons(); route();
   }
   function bindStravaButtons() {
     document.querySelectorAll('[data-strava-connect]').forEach(b => {
@@ -460,7 +781,7 @@
   }
   document.querySelectorAll('[data-example]').forEach(b => b.onclick = async () => { try { setPlanMd(await examplePlanMd(), 'exemplo'); } catch (e) { showToast('Não consegui carregar o exemplo.', true); } });
   $('bkSave').onclick = () => {
-    const blob = new Blob([JSON.stringify({ app: 'pacepro', v: 1, plan_md: planMd, done, runs }, null, 1)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify({ app: 'pacepro', v: 2, plan_md: planMd, done, extra, runs }, null, 1)], { type: 'application/json' });
     const el = document.createElement('a'); el.href = URL.createObjectURL(blob); el.download = `pacepro-backup-${today}.json`;
     document.body.appendChild(el); el.click(); el.remove(); setTimeout(() => URL.revokeObjectURL(el.href), 1000);
   };
@@ -469,7 +790,7 @@
     try {
       const j = JSON.parse(await f.text());
       if (!j || j.app !== 'pacepro') throw new Error();
-      done = j.done || {}; runs = Array.isArray(j.runs) ? j.runs : []; store.set(userKey('runs'), runs);
+      done = j.done || {}; extra = { ...defaultExtra(), ...(j.extra || {}) }; runs = Array.isArray(j.runs) ? j.runs : []; store.set(userKey('runs'), runs);
       setPlanMd(j.plan_md || null, 'salvo'); saveNow(); showToast('Backup restaurado.');
     } catch (err) { showToast('Esse arquivo não é um backup do PacePro.', true); }
   };
@@ -484,7 +805,7 @@
     renderAll();
     await checkStrava();
     renderSettings();
-    if (strava.connected) { try { await syncRuns(); } catch (e) {} }
+    if (strava.connected) await syncAndAnalyze(true);
     renderAll();
     if (q === 'ok') showToast('Strava conectado.');
     if (q === 'erro' || q === 'scope') { location.hash = 'ajustes'; showToast(q === 'scope' ? 'Autorize o acesso às atividades para analisar os treinos.' : 'Não consegui conectar ao Strava. Tente de novo.', true); }

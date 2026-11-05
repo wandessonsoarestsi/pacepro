@@ -8,6 +8,11 @@
 <title>PacePro</title>
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="PacePro">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&display=swap">
@@ -41,8 +46,10 @@
         <svg class="rings" id="rings" viewBox="0 0 120 120" aria-hidden="true"></svg>
       </div>
 
+      <div class="card adjust" id="adjust" hidden></div>
       <div class="card workout" id="workout"></div>
       <div class="card analysis" id="analysis" hidden></div>
+      <div class="card" id="dietCard" hidden></div>
 
       <div class="tiles">
         <div class="tile"><span class="lbl">Estimativa hoje</span><b id="tEst">–</b><small id="tEstSub">–</small></div>
@@ -72,6 +79,9 @@
         <svg class="chart" id="chart" viewBox="0 0 400 240" role="img" aria-label="Evolução da estimativa de tempo"></svg>
         <p class="muted small" id="chartHint"></p>
       </div>
+      <div class="card" id="raceCard" data-needs-plan></div>
+      <div class="card" id="zonesCard"></div>
+      <div class="card" id="weightCard"></div>
       <div class="card list">
         <div class="card-head"><h2>Corridas</h2><span class="muted small" id="runsSrc"></span></div>
         <div id="runs"></div>
@@ -88,6 +98,19 @@
           <button class="btn ghost" id="stravaSync" type="button" hidden>Sincronizar agora</button>
           <button class="btn ghost" id="stravaOut" type="button" hidden>Desconectar</button>
         </div>
+      </div>
+      <div class="card" id="installCard">
+        <div class="card-head"><h2>App no celular</h2><span class="chip" id="installChip">–</span></div>
+        <p class="muted small" id="installText">Instale o PacePro na tela inicial: ele abre em tela cheia e funciona sem internet.</p>
+        <div class="row-actions"><button class="btn" id="installBtn" type="button" hidden>Instalar o app</button></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>Frequência cardíaca</h2><span class="chip" id="hrChip">–</span></div>
+        <p class="muted small" id="hrText">–</p>
+        <form class="form" id="hrForm" novalidate>
+          <label for="hrMax">FC máxima (opcional)<input id="hrMax" type="text" inputmode="numeric" placeholder="ex.: 185"></label>
+          <button class="btn ghost" type="submit">Salvar</button>
+        </form>
       </div>
       <div class="card">
         <div class="card-head"><h2>Gerar plano novo</h2><span class="chip">método VDOT</span></div>

@@ -125,6 +125,8 @@
     const rr = (x, y, w, h, r) => { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); };
     const txt = (t, x, y, size, weight, color, align) => { ctx.font = `${weight || 700} ${size}px ${font}`; ctx.fillStyle = color || '#fff'; ctx.textAlign = align || 'left'; ctx.fillText(t, x, y); };
     function pin(x, y, r, color, ico) { ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.45)'; ctx.shadowBlur = 10; ctx.beginPath(); ctx.arc(x, y, r + 4, 0, 7); ctx.fillStyle = '#fff'; ctx.fill(); ctx.restore(); ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = color; ctx.fill(); ctx.font = `800 ${r * 1.05}px ${font}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#fff'; ctx.fillText(ico, x, y + 1); ctx.textBaseline = 'alphabetic'; }
+    const kmIdx = []; for (let k = 1, i = 0; k * 1000 < d.dist[d.dist.length - 1] - 50; k++) { while (i < d.dist.length - 1 && d.dist[i] < k * 1000) i++; kmIdx.push([k, i]); }
+    function kmTag(x, y, k) { const t = `${k} km`; ctx.font = `800 22px ${font}`; const w = ctx.measureText(t).width + 22; ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.35)'; ctx.shadowBlur = 8; rr(x - w / 2, y - 17, w, 34, 17); ctx.fillStyle = '#1a1d23'; ctx.fill(); ctx.restore(); ctx.lineWidth = 3; ctx.strokeStyle = '#fff'; rr(x - w / 2, y - 17, w, 34, 17); ctx.stroke(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#fff'; ctx.fillText(t, x, y + 1); ctx.textBaseline = 'alphabetic'; }
     function proj(i) { const p = map.project([d.lon[i], d.lat[i]]); return [p.x * PR, p.y * PR]; }
     function compose(s) {
      
@@ -147,6 +149,8 @@
           for (let k = 1; k < tr.length; k++) { ctx.beginPath(); ctx.moveTo(tr[k - 1][0], tr[k - 1][1]); ctx.lineTo(tr[k][0], tr[k][1]); ctx.strokeStyle = tr[k][2]; ctx.stroke(); }
         }
       }
+      // marcos de km já percorridos
+      if (s.ph !== 'intro') kmIdx.forEach(([k, i]) => { if (s.ph !== 'outro' && d.dist[i] > s.m) return; const [x, y] = proj(i); if (x < -40 || x > W + 40 || y < -40 || y > H + 40) return; kmTag(x, y, k); });
       // pinos dos momentos já alcançados
       const passed = s.ph === 'outro' || s.ph === 'intro' ? (s.ph === 'outro' ? moms.length : 0) : s.passed;
       moms.slice(0, passed).forEach(m => { const [x, y] = proj(m.i); pin(x, y, 22, m.color, m.ico); });

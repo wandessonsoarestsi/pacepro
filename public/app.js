@@ -628,6 +628,11 @@
     paint();
     const dot = (p, c) => L.circleMarker(p, { radius: 5, color: '#fff', weight: 2, fillColor: c, fillOpacity: 1, interactive: false }).addTo(map);
     dot(pts[0], ZC[2]); dot(pts[s.n - 1], ZC[4]);
+    // marcos de cada km do percurso
+    for (let k = 1, i = 0; k * 1000 < s.d[s.n - 1] - 50; k++) {
+      while (i < s.n - 1 && s.d[i] < k * 1000) i++;
+      L.marker(pts[i], { icon: L.divIcon({ className: '', html: `<span class="rt-km">${k} km</span>`, iconSize: [36, 18], iconAnchor: [18, 9] }), keyboard: false, interactive: false, zIndexOffset: -500 }).addTo(map);
+    }
     const all = moments.concat(repRows);
     const marks = all.map(m => {
       const p = m.i1 != null ? at(Math.round((m.i + m.i1) / 2)) : at(m.i);

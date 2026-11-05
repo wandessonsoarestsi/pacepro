@@ -593,7 +593,7 @@
     const ghostHtml = gh ? `<div class="rt-ghost"><b>${gh.final < 0 ? `${-gh.final} s mais rápido` : gh.final > 0 ? `${gh.final} s mais lento` : 'Mesmo tempo'}</b> que em ${ddmm(g.date)} no mesmo percurso` +
       (gh.perKm.length ? `<div class="rt-kms">${gh.perKm.map(k => `<span class="${k.diff < 0 ? 'good' : k.diff > 0 ? 'bad' : ''}">km ${k.k} ${k.diff > 0 ? '+' : k.diff < 0 ? '−' : '±'}${Math.abs(k.diff)}s</span>`).join('')}</div>` : '') + '</div>' : '';
     node.innerHTML = `<div class="rt-head"><span class="eyebrow">Mapa da corrida</span>${modes.length > 1 ? `<div class="rt-modes" role="group" aria-label="Cor do percurso">${modes.map(([k, t]) => `<button type="button" data-m="${k}" aria-pressed="${k === mode}">${t}</button>`).join('')}</div>` : ''}</div>` +
-      `<div class="rt-map"></div><div class="rt-legend"></div>` + ghostHtml +
+      `<div class="rt-map"></div><div class="rt-legend"></div>` + (window.RouteVideo ? '<button type="button" class="btn wide rt-video">Criar vídeo 3D para as redes</button>' : '') + ghostHtml +
       `<div class="rt-list">${moments.map((m, k) => `<button type="button" class="rt-row" data-k="${k}"><span class="rt-pin ${m.cls}">${m.ico}</span><span><b>${esc(m.t)}</b><small>${esc(m.d)}</small></span></button>`).join('')}</div>` +
       (repRows.length ? `<div class="rt-reps"><span class="eyebrow">Tiros no mapa</span><div class="rt-rgrid">${repRows.map((m, k) => `<button type="button" class="rt-row rt-rep" data-k="${moments.length + k}" aria-label="${esc(m.t + ': ' + m.d)}"><span class="rt-pin ${m.cls}">${m.ico}</span><b>${RI.fmtPace(ins.reps[k].pace)}</b></button>`).join('')}</div>${ins.reps.some(r => r.target) ? `<small class="muted">Verde no alvo, laranja perto, vermelho abaixo. Alvo ${RI.fmtPace(ins.reps.find(r => r.target).target)}/km.</small>` : ''}</div>` : '');
     const el = node.querySelector('.rt-map');
@@ -644,6 +644,22 @@
       mk.openPopup(); el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     });
     node.querySelectorAll('.rt-modes button').forEach(b => b.onclick = () => { mode = b.dataset.m; store.set('pp.rmode', mode); paint(); });
+    const vb = node.querySelector('.rt-video');
+    if (vb) vb.onclick = () => {
+      const run = runs.find(r => String(r.stravaId) === String(rm.id)) || {};
+      const pd = plan && run.date && dayAt(run.date), dt = run.date ? D(run.date) : null;
+      const PC = { k: cssVar('--c1'), v: cssVar('--c2'), h: cssVar('--bad'), c: cssVar('--c3'), f: cssVar('--warn'), g: '#7A5AF8' };
+      const TC = { good: cssVar('--good'), warn: cssVar('--warn'), bad: cssVar('--bad'), info: cssVar('--z1') };
+      const vm = moments.map(m => ({ i: m.i1 != null ? Math.round((m.i + m.i1) / 2) : m.i, ico: m.ico, color: PC[m.cls] || '#888', t: m.t.replace(/ \(km [^)]*\)$/, ''), d: m.d }));
+      if (ins.reps.length) { const r0 = ins.reps[0], avgP = ins.reps.reduce((a, r) => a + r.pace, 0) / ins.reps.length; vm.push({ i: r0.i0, ico: String(ins.reps.length), color: TC[r0.tone] || TC.info, t: `${ins.reps.length} tiros`, d: `média ${RI.fmtPace(avgP)}/km${r0.target ? ` · alvo ${RI.fmtPace(r0.target)}` : ''}` }); }
+      const km = s.d[s.n - 1] / 1000, sec = s.t[s.n - 1] - s.t[0];
+      window.RouteVideo.open({
+        lat: s.lat, lon: s.lon, dist: s.d, time: s.t, colors: colors(), moments: vm,
+        meta: { title: (pd && isRunType(pd.type) ? pd.title : run.name) || 'Corrida', date: dt ? `${WDL[dt.getDay()]}, ${dt.getDate()} de ${MON[dt.getMonth()]}` : '', fileDate: run.date,
+          km: km.toFixed(2).replace('.', ','), time: A.fmtTime(run.sec || sec), pace: A.fmtPace((run.sec || sec) / (run.km || km)), hr: run.hr,
+          ghost: gh && gh.final ? `${gh.final < 0 ? `${-gh.final} s mais rápido` : `${gh.final} s mais lento`} que em ${ddmm(g.date)}` : '', ghostColor: gh && gh.final > 0 ? ZC[4] : ZC[2] }
+      });
+    };
   }
 
   /* ---------- Plano ---------- */
@@ -1588,7 +1604,7 @@
   // Versão = impressão digital dos arquivos do site. Muda a cada publicação, sem depender de configuração na Vercel.
   async function fetchVer() {
     try {
-      const txt = await Promise.all(['/index.html', '/app.js', '/styles.css', '/analysis.js', '/plan-generator.js', '/plan-parser.js', '/route-map.js'].map(u => fetch(u, { cache: 'no-store' }).then(r => { if (!r.ok) throw new Error(); return r.text(); })));
+      const txt = await Promise.all(['/index.html', '/app.js', '/styles.css', '/analysis.js', '/plan-generator.js', '/plan-parser.js', '/route-map.js', '/route-video.js'].map(u => fetch(u, { cache: 'no-store' }).then(r => { if (!r.ok) throw new Error(); return r.text(); })));
       let h = 5381; const s = txt.join('\n');
       for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
       return (h >>> 0).toString(36).padStart(7, '0').slice(-7);

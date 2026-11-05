@@ -73,8 +73,10 @@
   const distKm = () => (plan && plan.distanceKm) || 5;
   const firstDay = () => plan ? plan.days[0].date : today;
   const lastDay = () => plan ? plan.days[plan.days.length - 1].date : today;
+  // Antes do início do plano, o app abre em hoje e mostra quanto falta.
+  const minDay = () => (today < firstDay() ? today : firstDay());
   function clampSelected() {
-    if (selected < firstDay()) selected = firstDay();
+    if (selected < minDay()) selected = minDay();
     if (selected > lastDay()) selected = lastDay();
   }
 
@@ -116,7 +118,7 @@
     const d = D(selected);
     $('dayTitle').textContent = selected === today ? 'HOJE' : selected === addDays(today, 1) ? 'AMANHÃ' : selected === addDays(today, -1) ? 'ONTEM' : WDL[d.getDay()].toUpperCase();
     $('daySub').textContent = `${WDL[d.getDay()]}, ${d.getDate()} de ${MON[d.getMonth()]}`;
-    $('prevDay').disabled = selected <= firstDay();
+    $('prevDay').disabled = selected <= minDay();
     $('nextDay').disabled = selected >= lastDay();
   }
 
@@ -178,6 +180,15 @@
   function renderWorkout() {
     const day = dayOf(selected);
     const el = $('workout');
+    if (!day && selected < firstDay()) {
+      const n = Math.round((D(firstDay()) - D(selected)) / 864e5);
+      el.innerHTML = `<div class="wk-top"><div><span class="eyebrow">Antes do plano</span><h3>O plano começa ${n === 1 ? 'amanhã' : `em ${n} dias`}</h3></div></div>` +
+        `<div class="blocks"><div class="blk rest"><span class="k">Até lá</span><p class="note">Primeiro treino: ${WDL[D(firstDay()).getDay()].toLowerCase()}, ${ddmm(firstDay())}. Até lá, caminhadas ou trotes leves de 20 a 30 minutos, se estiver se sentindo bem.</p></div></div>` +
+        `<div class="row-actions"><button class="btn ghost" id="goStart" type="button">Ver o primeiro treino</button></div>`;
+      $('analysis').hidden = true;
+      $('goStart').onclick = () => { selected = firstDay(); renderAll(); };
+      return;
+    }
     if (!day) { el.innerHTML = `<p class="muted">Sem treino planejado para este dia.</p>`; $('analysis').hidden = true; return; }
     const st = done[day.date];
     const isRun = !['swim', 'rest'].includes(day.type);

@@ -3,7 +3,11 @@
    semanas atrás e previsão de prova. Formato feed (4:5) ou stories (9:16). Sempre em tema claro. */
 (function (root) {
   const W = 1080, PR = 2;
-  const INK = '#14171C', MUTED = '#6B7280', LINE = '#E4E7EB', GOOD = '#22A06B', BAD = '#D6453D', GHOST = '#7A5AF8', TEAL = '#128C83';
+  let INK, MUTED, LINE, GOOD, BAD, TEAL, ORANGE, GHOSTT, CLEAR = false;
+  // Tema: claro (fundo de mapa ou arte) ou transparente (texto branco com sombra, para pôr sobre uma foto).
+  function theme(clear) { CLEAR = clear; INK = clear ? '#FFFFFF' : '#14171C'; MUTED = clear ? 'rgba(255,255,255,.88)' : '#6B7280'; LINE = clear ? 'rgba(255,255,255,.45)' : '#E4E7EB'; GOOD = clear ? '#4BE3A0' : '#22A06B'; BAD = clear ? '#FF7A70' : '#D6453D'; TEAL = clear ? '#7FE6DC' : '#128C83'; ORANGE = clear ? '#FFB36B' : '#F08A24'; GHOSTT = clear ? '#C9BBFF' : '#7A5AF8'; }
+  theme(false);
+  const GHOST = '#7A5AF8';
   const pad = n => String(n).padStart(2, '0');
   const fmtT = s => { s = Math.max(0, Math.round(s)); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60; return h ? `${h}:${pad(m)}:${pad(x)}` : `${m}:${pad(x)}`; };
   let iconP = null;
@@ -20,14 +24,14 @@
     const opt = (k, t, s, on) => `<label class="vs-opt"><input type="checkbox" data-o="${k}"${on ? ' checked' : ''}><span><b>${t}</b><small>${s}</small></span></label>`;
     box.innerHTML = `<div class="vs-bar"><button type="button" class="vs-x">‹ Voltar</button><b>Imagem do percurso</b><span></span></div>
       <div class="vs-body"><div class="vs-stage is-stage"><canvas class="vs-canvas"></canvas><div class="vs-load" hidden><div class="vs-lrow"><i class="vs-spin"></i><b class="vs-lt">Desenhando…</b></div></div></div>
-      <div class="is-seg" role="group" aria-label="Fundo"><button type="button" data-bg="map" aria-pressed="true">Mapa</button><button type="button" data-bg="art" aria-pressed="false">Arte da rota</button></div>
+      <div class="is-seg" role="group" aria-label="Fundo"><button type="button" data-bg="map" aria-pressed="true">Mapa</button><button type="button" data-bg="art" aria-pressed="false">Arte da rota</button><button type="button" data-bg="clear" aria-pressed="false">Transparente</button></div>
       <div class="is-seg" role="group" aria-label="Formato"><button type="button" data-fmt="feed" aria-pressed="true">Feed 4:5</button><button type="button" data-fmt="story" aria-pressed="false">Stories 9:16</button></div>
       <div class="vs-actions">
         ${d.moments.length ? opt('moments', 'Momentos no mapa', 'Km mais rápido, pico, FC mais alta, subida e onde cansou', true) : ''}
         ${d.ghost ? opt('ghost', 'Corredor fantasma', `Contra ${d.ghost.label} (${d.ghost.date})`, true) : ''}
         ${d.compare ? opt('compare', 'Comparação', `Com o mesmo treino ${d.compare.when} (${d.compare.date})`, true) : ''}
         ${d.predict ? opt('predict', 'Previsão de prova', d.predict.big, true) : ''}
-        <p class="vs-msg muted small">A arte da rota não mostra o mapa, então ninguém vê as ruas por onde você passou.</p>
+        <p class="vs-msg muted small">A arte da rota não mostra as ruas. O transparente fica por cima de uma foto no Instagram: o xadrez da prévia é só para ver o que é transparente.</p>
         <div class="vs-share"><button type="button" class="btn is-sh">Compartilhar</button><button type="button" class="btn ghost is-dl">Baixar</button></div>
       </div></div><div class="vs-map" aria-hidden="true"></div>`;
     document.body.appendChild(box); document.body.classList.add('noscroll');
@@ -45,9 +49,14 @@
 
     // Desenho básico
     const rr = (x, y, w, h, r) => { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); };
-    const txt = (t, x, y, size, weight, color, align) => { ctx.font = font(weight || 700, size); ctx.fillStyle = color || INK; ctx.textAlign = align || 'left'; ctx.fillText(t, x, y); return ctx.measureText(t).width; };
+    const txt = (t, x, y, size, weight, color, align) => {
+      ctx.font = font(weight || 700, size); ctx.fillStyle = color || INK; ctx.textAlign = align || 'left';
+      if (CLEAR) { ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = Math.max(6, size / 4); ctx.shadowOffsetY = 2; ctx.fillText(t, x, y); ctx.restore(); } else ctx.fillText(t, x, y);
+      return ctx.measureText(t).width;
+    };
+    const plain = (t, x, y, size, weight, color) => { ctx.font = font(weight, size); ctx.fillStyle = color; ctx.textAlign = 'left'; ctx.fillText(t, x, y); return ctx.measureText(t).width; };
     const fit = (t, maxW, size, weight) => { let s = size; ctx.font = font(weight, s); while (s > 18 && ctx.measureText(t).width > maxW) { s -= 2; ctx.font = font(weight, s); } return s; };
-    const card = (x, y, w, h) => { ctx.save(); ctx.shadowColor = 'rgba(20,23,28,.14)'; ctx.shadowBlur = 30; ctx.shadowOffsetY = 8; rr(x, y, w, h, 30); ctx.fillStyle = '#fff'; ctx.fill(); ctx.restore(); };
+    const card = (x, y, w, h) => { if (CLEAR) return; ctx.save(); ctx.shadowColor = 'rgba(20,23,28,.14)'; ctx.shadowBlur = 30; ctx.shadowOffsetY = 8; rr(x, y, w, h, 30); ctx.fillStyle = '#fff'; ctx.fill(); ctx.restore(); };
     function lines(t, maxW, size, weight, max) {
       ctx.font = font(weight, size); const out = []; let line = '';
       for (const w of String(t).split(' ')) { const test = line ? line + ' ' + w : w; if (ctx.measureText(test).width > maxW && line) { out.push(line); line = w; } else line = test; }
@@ -72,11 +81,11 @@
         const hw = (CWd - 20) / 2, g = d.ghost, p = d.predict;
         out.push({ h: 176, draw: y => {
           card(X, y, hw, 176); card(X + hw + 20, y, hw, 176);
-          txt('CORREDOR FANTASMA', X + 28, y + 48, 21, 800, GHOST); ghostIcon(X + hw - 46, y + 46, 24);
+          txt('CORREDOR FANTASMA', X + 28, y + 48, 21, 800, GHOSTT); ghostIcon(X + hw - 46, y + 46, 24);
           txt(ghostHead(g), X + 28, y + 104, fit(ghostHead(g), hw - 56, 50, 800), 800, ghostTone(g));
           txt(`contra ${g.short || g.label} · ${g.date}`, X + 28, y + 144, fit(`contra ${g.short || g.label} · ${g.date}`, hw - 56, 23, 600), 600, MUTED);
           const x2 = X + hw + 20;
-          txt('PREVISÃO DE PROVA', x2 + 28, y + 48, 21, 800, '#F08A24');
+          txt('PREVISÃO DE PROVA', x2 + 28, y + 48, 21, 800, ORANGE);
           txt(p.short || p.big, x2 + 28, y + 104, fit(p.short || p.big, hw - 56, 50, 800), 800, INK);
           if (p.note) txt(p.note, x2 + 28, y + 144, fit(p.note, hw - 56, 23, 600), 600, p.ok ? GOOD : MUTED);
         } });
@@ -101,7 +110,7 @@
           const p = d.predict, h = p.pct != null ? 176 : 140;
           out.push({ h, draw: y => {
             card(X, y, CWd, h);
-            txt('PREVISÃO DE PROVA', X + 32, y + 50, 22, 800, '#F08A24');
+            txt('PREVISÃO DE PROVA', X + 32, y + 50, 22, 800, ORANGE);
             txt(p.big, X + 32, y + 98, fit(p.big, CWd - 64, 42, 800), 800, INK);
             if (p.small) txt(p.small, X + 32, y + 134, fit(p.small, CWd - 64, 25, 600), 600, p.ok ? GOOD : MUTED);
             if (p.pct != null) { rr(X + 32, y + 150, CWd - 64, 12, 6); ctx.fillStyle = '#EEF0F3'; ctx.fill(); rr(X + 32, y + 150, Math.max(12, (CWd - 64) * p.pct), 12, 6); ctx.fillStyle = p.ok ? GOOD : '#F08A24'; ctx.fill(); }
@@ -165,6 +174,7 @@
       if (art) { // ecos suaves da rota, estilo pôster
         [[64, .05], [44, .07], [28, .1]].forEach(([w, a]) => { path(); ctx.strokeStyle = `rgba(18,140,131,${a})`; ctx.lineWidth = w; ctx.stroke(); });
       }
+      if (CLEAR) { ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 16; path(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 20; ctx.stroke(); ctx.restore(); }
       path(); ctx.strokeStyle = '#fff'; ctx.lineWidth = art ? 22 : 20; ctx.stroke();
       path(); ctx.strokeStyle = 'rgba(20,23,28,.18)'; ctx.lineWidth = art ? 18 : 16; ctx.stroke();
       ctx.lineWidth = art ? 13 : 11;
@@ -173,12 +183,12 @@
       // marcos de km
       for (let k = 1; k * 1000 < total - 50; k++) {
         const [x, y] = P[idxAt(k * 1000)];
-        ctx.beginPath(); ctx.arc(x, y, 15, 0, 7); ctx.fillStyle = INK; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = '#fff'; ctx.stroke();
+        ctx.beginPath(); ctx.arc(x, y, 15, 0, 7); ctx.fillStyle = '#14171C'; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = '#fff'; ctx.stroke();
         txt(String(k), x, y + 7, 19, 800, '#fff', 'center');
       }
       // largada e chegada
       const flag = ([x, y], c, t) => { ctx.beginPath(); ctx.arc(x, y, 20, 0, 7); ctx.fillStyle = '#fff'; ctx.fill(); ctx.beginPath(); ctx.arc(x, y, 14, 0, 7); ctx.fillStyle = c; ctx.fill(); txt(t, x, y + 6, 16, 900, '#fff', 'center'); };
-      flag(P[0], GOOD, 'L'); flag(P[n - 1], INK, 'C');
+      flag(P[0], GOOD, 'L'); flag(P[n - 1], '#14171C', 'C');
     }
     function pin(x, y, r, color, ico) {
       ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.3)'; ctx.shadowBlur = 10; ctx.beginPath(); ctx.arc(x, y, r + 5, 0, 7); ctx.fillStyle = '#fff'; ctx.fill(); ctx.restore();
@@ -207,14 +217,14 @@
         taken.push(best);
         ctx.save(); ctx.shadowColor = 'rgba(20,23,28,.18)'; ctx.shadowBlur = 12; rr(best[0], best[1], tw, th, 23); ctx.fillStyle = '#fff'; ctx.fill(); ctx.restore();
         ctx.beginPath(); ctx.arc(best[0] + 18, best[1] + th / 2, 6, 0, 7); ctx.fillStyle = m.ghost ? GHOST : m.color; ctx.fill();
-        txt(m.s, best[0] + 30, best[1] + 32, 25, 800, INK);
+        plain(m.s, best[0] + 30, best[1] + 32, 25, 800, '#14171C');
       });
     }
     function legend(items, x, y) {
       if (!items || !items.length) return;
       ctx.font = font(700, 22); let w = 28; items.forEach(([, l]) => { w += 30 + ctx.measureText(l).width + 18; });
       ctx.save(); ctx.shadowColor = 'rgba(20,23,28,.12)'; ctx.shadowBlur = 10; rr(x, y, w, 44, 22); ctx.fillStyle = 'rgba(255,255,255,.94)'; ctx.fill(); ctx.restore();
-      let cx = x + 18; items.forEach(([c, l]) => { ctx.beginPath(); ctx.arc(cx + 9, y + 22, 9, 0, 7); ctx.fillStyle = c; ctx.fill(); cx += 26; cx += txt(l, cx, y + 30, 22, 700, MUTED) + 22; });
+      let cx = x + 18; items.forEach(([c, l]) => { ctx.beginPath(); ctx.arc(cx + 9, y + 22, 9, 0, 7); ctx.fillStyle = c; ctx.fill(); cx += 26; cx += plain(l, cx, y + 30, 22, 700, '#6B7280') + 22; });
     }
 
     async function render() {
@@ -233,9 +243,12 @@
         if (st.bg === 'map') P = await mapProj(rect);
       } catch (e) { if (my !== job) return; st.bg = 'art'; syncSeg(); $('.vs-msg').textContent = e.message || 'Não consegui carregar o mapa. Mostrei a arte da rota.'; }
       if (my !== job || closed) return;
-      if (st.bg === 'art') P = artProj(rect);
+      if (st.bg !== 'map') P = artProj(rect);
+      theme(st.bg === 'clear');
+      $('.is-stage').classList.toggle('clear', st.bg === 'clear');
       // fundo
-      if (st.bg === 'map') {
+      if (st.bg === 'clear') ctx.clearRect(0, 0, W, H);
+      else if (st.bg === 'map') {
         ctx.clearRect(0, 0, W, H);
         try { ctx.drawImage(map.getCanvas(), 0, 0, W, H); } catch (e) { ctx.fillStyle = '#F2F3F5'; ctx.fillRect(0, 0, W, H); }
         let g = ctx.createLinearGradient(0, 0, 0, top + 60); g.addColorStop(0, 'rgba(255,255,255,.97)'); g.addColorStop(0.7, 'rgba(255,255,255,.85)'); g.addColorStop(1, 'rgba(255,255,255,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, top + 60);
@@ -259,7 +272,7 @@
       // cartões
       let y = cardsTop;
       B.forEach(b => { b.draw(y); y += b.h + gap; });
-      txt(st.bg === 'map' ? 'mapa © OpenStreetMap · dados: Strava' : 'dados: Strava', W / 2, H - 22, 20, 600, 'rgba(20,23,28,.45)', 'center');
+      txt(st.bg === 'map' ? 'mapa © OpenStreetMap · dados: Strava' : 'dados: Strava', W / 2, H - 22, 20, 600, CLEAR ? 'rgba(255,255,255,.75)' : 'rgba(20,23,28,.45)', 'center');
       busy(false);
     }
     function syncSeg() {

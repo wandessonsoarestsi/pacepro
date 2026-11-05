@@ -525,3 +525,6 @@ body.noscroll{overflow:hidden}
 .is-seg button[aria-pressed="true"]{background:var(--card);color:var(--fg);box-shadow:var(--shadow)}
 .rt-image{margin-top:8px}
 .istudio .is-stage.clear{background:repeating-conic-gradient(#5b6470 0 25%,#7b8490 0 50%) 0 0/24px 24px}
+
+/* iPhone dá zoom sozinho em campos com letra menor que 16px. */
+input,select,textarea{font-size:16px!important}

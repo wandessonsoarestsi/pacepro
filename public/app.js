@@ -893,7 +893,8 @@
     $('planChip').textContent = plan ? planSource : 'sem plano';
     $('genBox').hidden = !genOpen;
     $('genToggle').setAttribute('aria-expanded', String(genOpen));
-    const t = store.get('sub30.theme', 'system');
+    let t = 'system'; try { t = localStorage.getItem('sub30.theme') || 'system'; } catch (e) {}
+    if (t !== 'light' && t !== 'dark') t = 'system';
     document.querySelectorAll('#themePills button').forEach(b => b.setAttribute('aria-checked', String(b.dataset.t === t)));
   }
   let genOpen = false;
@@ -904,7 +905,7 @@
   $('genToggle').onclick = () => openGen(!genOpen);
   document.querySelectorAll('[data-open-gen]').forEach(a => a.addEventListener('click', () => openGen(true)));
   document.querySelectorAll('#themePills button').forEach(b => b.onclick = () => {
-    const t = b.dataset.t; store.set('sub30.theme', t);
+    const t = b.dataset.t; // gravado como texto puro: é assim que o index.html lê ao abrir
     try { localStorage.setItem('sub30.theme', t); } catch (e) {}
     if (t === 'system') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme', t);
     renderSettings();

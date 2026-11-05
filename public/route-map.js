@@ -41,7 +41,11 @@
   }
   function peakSpeed(s, sp) {
     const r = rolling(s, sp, 20); let bi = -1, bv = 0;
-    for (let i = 0; i < s.n; i++) if (r[i] != null && r[i] > bv && r[i] < 9) { bv = r[i]; bi = i; }
+    const tot = s.d[s.n - 1];
+    for (let i = 0; i < s.n; i++) {
+      if (s.t[i] - s.t[0] < 60 || s.d[i] < 150 || s.d[i] > tot - 80) continue; // largada e chegada costumam ter GPS instável
+      if (r[i] != null && r[i] > bv && r[i] < 9) { bv = r[i]; bi = i; }
+    }
     return bi < 0 || bv < 1 ? null : { i: bi, v: bv, pace: 1000 / bv };
   }
   function maxHr(s) {

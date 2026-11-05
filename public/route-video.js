@@ -175,10 +175,12 @@
       }
       if (s.ph === 'hold') {
         const m = moms[s.hold], fk = holdT[s.hold] / 280, a = Math.min(1, s.hk * fk, (1 - s.hk) * fk); ctx.globalAlpha = a;
-        const ch = m.km ? 182 : 150, y = 210 + (1 - a) * 20; rr(40, y, W - 80, ch, 30); ctx.fillStyle = 'rgba(15,17,21,.85)'; ctx.fill();
+        ctx.font = `600 26px ${font}`; const dl = lineSplit(m.d, W - 220);
+        const ch = Math.max(150, 120 + dl.length * 32), y = 210 + (1 - a) * 20; rr(40, y, W - 80, ch, 30); ctx.fillStyle = 'rgba(15,17,21,.85)'; ctx.fill();
         if (m.km) { ctx.save(); rr(64, y + 40, 76, 50, 25); ctx.fillStyle = '#fff'; ctx.fill(); ctx.restore(); txt(m.ico, 102, y + 75, 28, 900, '#1a1d23', 'center'); }
         else pin(100, y + 75, 32, m.color, m.ico);
-        txt(m.t, 160, y + 64, 34, 800, '#fff'); wrap(m.d, 160, y + 106, W - 220, 26, m.km ? 3 : 2);
+        let ts = 34; ctx.font = `800 ${ts}px ${font}`; while (ts > 24 && ctx.measureText(m.t).width > W - 220) { ts -= 2; ctx.font = `800 ${ts}px ${font}`; }
+        txt(m.t, 160, y + 64, ts, 800, '#fff'); dl.forEach((l, k) => txt(l, 160, y + 106 + k * 32, 26, 600, 'rgba(255,255,255,.78)'));
         ctx.globalAlpha = 1;
       }
       if (s.ph === 'outro' && s.k > 0.15) {
@@ -194,7 +196,7 @@
         ctx.globalAlpha = 1;
       }
     }
-    function lineSplit(t, maxW) { const out = []; let line = ''; for (const w of String(t).split(' ')) { const test = line ? line + ' ' + w : w; if (ctx.measureText(test).width > maxW && line) { out.push(line); line = w; } else line = test; } if (line) out.push(line); return out.slice(0, 7); }
+    function lineSplit(t, maxW) { const out = []; let line = ''; for (const w of String(t).split(' ')) { const test = line ? line + ' ' + w : w; if (ctx.measureText(test).width > maxW && line) { out.push(line); line = w; } else line = test; } if (line) out.push(line); return out.slice(0, 8); }
     function wrap(t, x, y, maxW, size, lines) {
       ctx.font = `600 ${size}px ${font}`; ctx.fillStyle = 'rgba(255,255,255,.78)'; ctx.textAlign = 'left';
       const words = String(t).split(' '); let line = '', k = 0;

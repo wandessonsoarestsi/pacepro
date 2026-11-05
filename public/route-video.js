@@ -57,7 +57,7 @@
     box.innerHTML = `<div class="vs-bar"><button type="button" class="vs-x">‹ Voltar</button><b>Vídeo da corrida</b><span></span></div>
       <div class="vs-body"><div class="vs-stage"><canvas class="vs-canvas" width="${W}" height="${H}"></canvas><video class="vs-video" playsinline controls hidden></video><div class="vs-load" hidden><div class="vs-lrow"><i class="vs-spin"></i><b class="vs-lt">Preparando…</b><span class="vs-pct"></span></div><div class="vs-pbar"><i></i></div></div></div>
       <p class="vs-msg muted small">Vídeo vertical de uns 20 segundos com o mapa 3D do seu percurso. Deixe o app aberto enquanto ele é gerado.</p>
-      <div class="vs-actions"><button type="button" class="btn wide vs-go">Gerar vídeo</button></div></div>
+      <div class="vs-actions">${d.kmMoments && d.kmMoments.length ? '<label class="vs-opt"><input type="checkbox" class="vs-km" checked><span><b>Análise por km</b><small>Uma parada em cada km com o que aconteceu nele</small></span></label>' : ''}<button type="button" class="btn wide vs-go">Gerar vídeo</button></div></div>
       <div class="vs-map" aria-hidden="true"></div>`;
     document.body.appendChild(box); document.body.classList.add('noscroll');
     const $ = s => box.querySelector(s);
@@ -80,21 +80,26 @@
     const idxAt = m => { let lo = 0, hi = n - 1; while (hi - lo > 1) { const k = (lo + hi) >> 1; if (d.dist[k] < m) lo = k; else hi = k; } return lo; };
     const posAt = m => { const i = idxAt(m), j = Math.min(n - 1, i + 1); const f = d.dist[j] > d.dist[i] ? (m - d.dist[i]) / (d.dist[j] - d.dist[i]) : 0; return [lerp(d.lat[i], d.lat[j], f), lerp(d.lon[i], d.lon[j], f), i, f]; };
     const timeAtM = m => { const [, , i, f] = posAt(m); const j = Math.min(n - 1, i + 1); return lerp(d.time[i], d.time[j], f) - d.time[0]; };
-    const moms = d.moments.filter(m => m.i > 2 && m.i < n - 3).sort((a, b) => a.i - b.i).slice(0, 7);
-
+    let moms = [], holdsAt = [], runEnd = 0, END = 0, HOLD = T_HOLD;
     // Linha do tempo: intro → percurso (com paradas) → final
-    const holdsAt = moms.map(m => d.dist[m.i]);
-    const runEnd = T_INTRO + T_RUN + moms.length * T_HOLD, END = runEnd + T_OUTRO;
+    function setMoments(withKm) {
+      const base = d.moments.filter(m => m.i > 2 && m.i < n - 3 && !(withKm && m.kmFast)).sort((a, b) => a.i - b.i).slice(0, 7);
+      const kms = withKm ? (d.kmMoments || []).filter(m => m.i > 2 && m.i <= n - 1) : [];
+      moms = base.concat(kms).sort((a, b) => a.i - b.i || (a.km ? 1 : 0) - (b.km ? 1 : 0));
+      holdsAt = moms.map(m => d.dist[m.i]);
+      HOLD = withKm ? 2300 : T_HOLD; runEnd = T_INTRO + T_RUN + moms.length * HOLD; END = runEnd + T_OUTRO;
+    }
+    setMoments(false);
     function stateAt(t) {
       if (t < T_INTRO) return { ph: 'intro', k: t / T_INTRO, m: 0 };
       if (t >= runEnd) return { ph: 'outro', k: Math.min(1, (t - runEnd) / T_OUTRO), m: total };
       let x = t - T_INTRO; // tempo dentro do percurso, descontando paradas
       for (let h = 0; h < holdsAt.length; h++) {
-        const tReach = (holdsAt[h] / total) * T_RUN + h * T_HOLD;
-        if (x < tReach) return { ph: 'run', m: ((x - h * T_HOLD) / T_RUN) * total, passed: h };
-        if (x < tReach + T_HOLD) return { ph: 'hold', m: holdsAt[h], hold: h, hk: (x - tReach) / T_HOLD, passed: h + 1 };
+        const tReach = (holdsAt[h] / total) * T_RUN + h * HOLD;
+        if (x < tReach) return { ph: 'run', m: ((x - h * HOLD) / T_RUN) * total, passed: h };
+        if (x < tReach + HOLD) return { ph: 'hold', m: holdsAt[h], hold: h, hk: (x - tReach) / HOLD, passed: h + 1 };
       }
-      return { ph: 'run', m: Math.min(total, ((x - holdsAt.length * T_HOLD) / T_RUN) * total), passed: holdsAt.length };
+      return { ph: 'run', m: Math.min(total, ((x - holdsAt.length * HOLD) / T_RUN) * total), passed: holdsAt.length };
     }
 
     function segData(m) {
@@ -153,7 +158,7 @@
       if (s.ph !== 'intro') kmIdx.forEach(([k, i]) => { if (s.ph !== 'outro' && d.dist[i] > s.m) return; const [x, y] = proj(i); if (x < -40 || x > W + 40 || y < -40 || y > H + 40) return; kmTag(x, y, k); });
       // pinos dos momentos já alcançados
       const passed = s.ph === 'outro' || s.ph === 'intro' ? (s.ph === 'outro' ? moms.length : 0) : s.passed;
-      moms.slice(0, passed).forEach(m => { const [x, y] = proj(m.i); pin(x, y, 22, m.color, m.ico); });
+      moms.slice(0, passed).forEach(m => { if (m.km) return; const [x, y] = proj(m.i); pin(x, y, 22, m.color, m.ico); });
       if (s.ph !== 'intro') { const p = map.project([posAt(s.m)[1], posAt(s.m)[0]]); const x = p.x * PR, y = p.y * PR; ctx.beginPath(); ctx.arc(x, y, 26, 0, 7); ctx.fillStyle = 'rgba(26,29,35,.22)'; ctx.fill(); ctx.beginPath(); ctx.arc(x, y, 15, 0, 7); ctx.fillStyle = '#1a1d23'; ctx.fill(); ctx.beginPath(); ctx.arc(x, y, 11, 0, 7); ctx.fillStyle = '#fff'; ctx.fill(); }
       if (s.ph === 'intro') {
         const a = Math.min(1, s.k * 3) * (s.k > 0.75 ? (1 - s.k) * 4 : 1); ctx.globalAlpha = Math.max(0, a);
@@ -167,9 +172,10 @@
       }
       if (s.ph === 'hold') {
         const m = moms[s.hold], a = Math.min(1, s.hk * 6, (1 - s.hk) * 6); ctx.globalAlpha = a;
-        const y = 210 + (1 - a) * 20; rr(40, y, W - 80, 150, 30); ctx.fillStyle = 'rgba(15,17,21,.85)'; ctx.fill();
-        pin(100, y + 75, 32, m.color, m.ico);
-        txt(m.t, 160, y + 64, 34, 800, '#fff'); wrap(m.d, 160, y + 106, W - 220, 26, 2);
+        const ch = m.km ? 182 : 150, y = 210 + (1 - a) * 20; rr(40, y, W - 80, ch, 30); ctx.fillStyle = 'rgba(15,17,21,.85)'; ctx.fill();
+        if (m.km) { ctx.save(); rr(64, y + 40, 76, 50, 25); ctx.fillStyle = '#fff'; ctx.fill(); ctx.restore(); txt(m.ico, 102, y + 75, 28, 900, '#1a1d23', 'center'); }
+        else pin(100, y + 75, 32, m.color, m.ico);
+        txt(m.t, 160, y + 64, 34, 800, '#fff'); wrap(m.d, 160, y + 106, W - 220, 26, m.km ? 3 : 2);
         ctx.globalAlpha = 1;
       }
       if (s.ph === 'outro' && s.k > 0.15) {
@@ -289,14 +295,14 @@
     }
 
     $('.vs-go').onclick = async () => {
-      const go = $('.vs-go'); go.disabled = true; $('.vs-video').hidden = true; cv.hidden = false; busy(true); msg('Preparando o mapa 3D…');
+      const go = $('.vs-go'); go.disabled = true; const kc = $('.vs-km'); setMoments(!!(kc && kc.checked)); if (kc) kc.disabled = true; $('.vs-video').hidden = true; cv.hidden = false; busy(true); msg('Preparando o mapa 3D…');
       const old = box.querySelector('.vs-share'); if (old) old.remove();
       try {
         if (!map) await build();
         if (stop) return;
         const blob = await record();
         busy(false);
-        if (!blob || stop) { go.disabled = false; return; }
+        if (!blob || stop) { go.disabled = false; if (kc) kc.disabled = false; return; }
         if (url) URL.revokeObjectURL(url);
         url = URL.createObjectURL(blob);
         const v = $('.vs-video'); v.src = url; v.hidden = false; cv.hidden = true;
@@ -310,7 +316,7 @@
         const sh = acts.querySelector('.vs-sh'); if (sh) sh.onclick = () => navigator.share({ files: [file], title: d.meta.title }).catch(() => {});
         go.textContent = 'Gerar de novo'; go.dataset.t = ''; go.classList.add('ghost');
       } catch (e) { busy(false); msg(e.message || 'Não consegui gerar o vídeo.', true); }
-      go.disabled = false;
+      go.disabled = false; if (kc) kc.disabled = false;
     };
     return { close };
   }

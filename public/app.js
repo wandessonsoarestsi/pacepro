@@ -32,6 +32,49 @@
   let selected = today;
   let busy = false;
 
+  // Um resumo curto de cada km para o vídeo: ritmo, FC e terreno comparados com o km anterior.
+  function kmAnalysis(s, Z) {
+    const total = s.d[s.n - 1], out = [];
+    const idx = m => { let i = 0; while (i < s.n - 1 && s.d[i] < m) i++; return i; };
+    const segs = [];
+    for (let k = 1; (k - 1) * 1000 < total - 300; k++) {
+      const i0 = idx((k - 1) * 1000), i1 = k * 1000 <= total ? idx(k * 1000) : s.n - 1;
+      const dist = s.d[i1] - s.d[i0], sec = s.t[i1] - s.t[i0];
+      if (dist < 300 || sec <= 0) break;
+      const hrs = s.hr ? s.hr.slice(i0, i1 + 1).filter(h => h > 0) : [];
+      let up = 0, down = 0;
+      if (s.alt) for (let i = i0 + 1; i <= i1; i++) { const x = s.alt[i] - s.alt[i - 1]; if (x > 0) up += x; else down -= x; }
+      segs.push({ k, i0, i1, dist, pace: sec / (dist / 1000), hr: hrs.length ? Math.round(hrs.reduce((a, b) => a + b, 0) / hrs.length) : 0, up, down, last: k * 1000 > total });
+    }
+    if (segs.length < 2) return [];
+    const full = segs.filter(x => !x.last || x.dist > 800), paces = full.map(x => x.pace);
+    const best = Math.min(...paces), worst = Math.max(...paces), avg = paces.reduce((a, b) => a + b, 0) / paces.length;
+    const kmh = p => (3600 / p).toFixed(1).replace('.', ',');
+    const zt = h => (Z && h ? ` (Z${zoneOf(h, Z) + 1})` : '');
+    const step = Math.ceil(segs.length / 12);
+    segs.forEach((g, n) => {
+      if (n % step && !g.last && n !== segs.length - 1) return;
+      const pv = segs[n - 1], parts = [];
+      const p = A.fmtPace(g.pace), dp = pv ? Math.round(g.pace - pv.pace) : 0;
+      if (!pv) parts.push(`${g.pace > avg + 5 ? 'Começou leve' : g.pace < avg - 5 ? 'Começou forte' : 'Começou no ritmo'}, a ${p}/km (${kmh(g.pace)} km/h)`);
+      else if (dp <= -8) parts.push(`Acelerou para ${p}/km (${kmh(g.pace)} km/h), ${-dp} s mais rápido que o km ${pv.k}`);
+      else if (dp >= 8) parts.push(`O ritmo caiu para ${p}/km, ${dp} s mais lento que o km ${pv.k}`);
+      else parts.push(`Ritmo constante em ${p}/km`);
+      if (g.hr) {
+        const dh = pv && pv.hr ? g.hr - pv.hr : 0;
+        parts.push(!pv ? `FC média ${g.hr}${zt(g.hr)}` : dh >= 5 ? `FC subiu para ${g.hr}${zt(g.hr)}` : dh <= -5 ? `FC baixou para ${g.hr}${zt(g.hr)}` : `FC em ${g.hr}${zt(g.hr)}`);
+      }
+      if (g.up >= 10 && g.up > g.down * 1.5) parts.push(`subida de ${Math.round(g.up)} m`);
+      else if (g.down >= 10 && g.down > g.up * 1.5) parts.push(`descida de ${Math.round(g.down)} m`);
+      let txt = parts.join(', ').replace(/^./, c => c.toUpperCase()) + '.';
+      const uniq = (v, f) => full.length > 2 && g.pace === v && full.filter(x => Math.abs(x.pace - v) < 3).length === 1 && f;
+      const fast = uniq(best, true), slow = uniq(worst, true);
+      if (g.last) txt = (g.pace < avg - 3 ? 'Fechou forte! ' : '') + txt;
+      out.push({ i: g.i1, km: true, ico: String(g.k), color: '#1a1d23', t: g.last ? `Últimos ${Math.round(g.dist)} m` : `Km ${g.k}${fast ? ' · o mais rápido' : slow ? ' · o mais lento' : ''}`, d: txt });
+    });
+    return out;
+  }
+
   /* ---------- Plano ---------- */
   function applyPlanMd(md, source) {
     planMd = md || null;
@@ -654,11 +697,11 @@
       const pd = plan && run.date && dayAt(run.date), dt = run.date ? D(run.date) : null;
       const PC = { k: cssVar('--c1'), v: cssVar('--c2'), h: cssVar('--bad'), c: cssVar('--c3'), f: cssVar('--warn'), g: '#7A5AF8' };
       const TC = { good: cssVar('--good'), warn: cssVar('--warn'), bad: cssVar('--bad'), info: cssVar('--z1') };
-      const vm = moments.map(m => ({ i: m.i1 != null ? Math.round((m.i + m.i1) / 2) : m.i, ico: m.ico, color: PC[m.cls] || '#888', t: m.t.replace(/ \(km [^)]*\)$/, ''), d: m.d }));
+      const vm = moments.map(m => ({ i: m.i1 != null ? Math.round((m.i + m.i1) / 2) : m.i, ico: m.ico, color: PC[m.cls] || '#888', t: m.t.replace(/ \(km [^)]*\)$/, ''), d: m.d, kmFast: m.cls === 'k' }));
       if (ins.reps.length) { const r0 = ins.reps[0], avgP = ins.reps.reduce((a, r) => a + r.pace, 0) / ins.reps.length; vm.push({ i: r0.i0, ico: String(ins.reps.length), color: TC[r0.tone] || TC.info, t: `${ins.reps.length} tiros`, d: `média ${RI.fmtPace(avgP)}/km${r0.target ? ` · alvo ${RI.fmtPace(r0.target)}` : ''}` }); }
       const km = s.d[s.n - 1] / 1000, sec = s.t[s.n - 1] - s.t[0];
       window.RouteVideo.open({
-        lat: s.lat, lon: s.lon, dist: s.d, time: s.t, colors: colors(), moments: vm,
+        lat: s.lat, lon: s.lon, dist: s.d, time: s.t, colors: colors(), moments: vm, kmMoments: kmAnalysis(s, hasHr ? Z : null),
         meta: { title: (pd && isRunType(pd.type) ? pd.title : run.name) || 'Corrida', date: dt ? `${WDL[dt.getDay()]}, ${dt.getDate()} de ${MON[dt.getMonth()]}` : '', fileDate: run.date,
           km: km.toFixed(2).replace('.', ','), time: A.fmtTime(run.sec || sec), pace: A.fmtPace((run.sec || sec) / (run.km || km)), hr: run.hr,
           ghost: gh && gh.final ? `${gh.final < 0 ? `${-gh.final} s mais rápido` : `${gh.final} s mais lento`} que em ${ddmm(g.date)}` : '', ghostColor: gh && gh.final > 0 ? ZC[4] : ZC[2] }

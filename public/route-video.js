@@ -1,7 +1,7 @@
 /* Vídeo da corrida: mapa 3D (MapLibre + mapas gratuitos), câmera percorrendo o trajeto, paradas nos
    momentos marcantes e cartão final. Grava no próprio celular (MediaRecorder) em 9:16. */
 (function (root) {
-  const STYLE = 'https://tiles.openfreemap.org/styles/dark';
+  const STYLE = 'https://tiles.openfreemap.org/styles/positron';
   const DEM = 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png';
   const CW = 360, CH = 640, PR = 2, W = CW * PR, H = CH * PR; // saída 720×1280
   const T_INTRO = 2200, T_RUN = 11000, T_HOLD = 1700, T_OUTRO = 3400, FPS = root.__vsFPS || 30;
@@ -150,7 +150,7 @@
       // pinos dos momentos já alcançados
       const passed = s.ph === 'outro' || s.ph === 'intro' ? (s.ph === 'outro' ? moms.length : 0) : s.passed;
       moms.slice(0, passed).forEach(m => { const [x, y] = proj(m.i); pin(x, y, 22, m.color, m.ico); });
-      if (s.ph !== 'intro') { const p = map.project([posAt(s.m)[1], posAt(s.m)[0]]); const x = p.x * PR, y = p.y * PR; ctx.beginPath(); ctx.arc(x, y, 26, 0, 7); ctx.fillStyle = 'rgba(255,255,255,.25)'; ctx.fill(); ctx.beginPath(); ctx.arc(x, y, 13, 0, 7); ctx.fillStyle = '#fff'; ctx.fill(); }
+      if (s.ph !== 'intro') { const p = map.project([posAt(s.m)[1], posAt(s.m)[0]]); const x = p.x * PR, y = p.y * PR; ctx.beginPath(); ctx.arc(x, y, 26, 0, 7); ctx.fillStyle = 'rgba(26,29,35,.22)'; ctx.fill(); ctx.beginPath(); ctx.arc(x, y, 15, 0, 7); ctx.fillStyle = '#1a1d23'; ctx.fill(); ctx.beginPath(); ctx.arc(x, y, 11, 0, 7); ctx.fillStyle = '#fff'; ctx.fill(); }
       if (s.ph === 'intro') {
         const a = Math.min(1, s.k * 3) * (s.k > 0.75 ? (1 - s.k) * 4 : 1); ctx.globalAlpha = Math.max(0, a);
         txt(d.meta.title, W / 2, H / 2 - 20, 54, 900, '#fff', 'center'); txt(`${d.meta.km} km`, W / 2, H / 2 + 44, 34, 700, 'rgba(255,255,255,.85)', 'center'); ctx.globalAlpha = 1;
@@ -197,16 +197,16 @@
       await new Promise((ok, no) => { const to = setTimeout(() => no(new Error('O mapa demorou para carregar. Confira a internet e tente de novo.')), 20000); map.once('load', () => { clearTimeout(to); ok(); }); });
       const st = map.getStyle();
       if (st.sources.openmaptiles && !st.layers.some(l => l.type === 'fill-extrusion')) {
-        map.addLayer({ id: 'pp-b3d', type: 'fill-extrusion', source: 'openmaptiles', 'source-layer': 'building', minzoom: 14, paint: { 'fill-extrusion-color': '#2b313b', 'fill-extrusion-height': ['coalesce', ['get', 'render_height'], 8], 'fill-extrusion-base': ['coalesce', ['get', 'render_min_height'], 0], 'fill-extrusion-opacity': 0.9 } });
+        map.addLayer({ id: 'pp-b3d', type: 'fill-extrusion', source: 'openmaptiles', 'source-layer': 'building', minzoom: 14, paint: { 'fill-extrusion-color': '#d6d2ca', 'fill-extrusion-height': ['coalesce', ['get', 'render_height'], 8], 'fill-extrusion-base': ['coalesce', ['get', 'render_min_height'], 0], 'fill-extrusion-opacity': 0.9 } });
       }
       if (await demOk()) {
         map.addSource('pp-hs', { type: 'raster-dem', tiles: [DEM], encoding: 'terrarium', tileSize: 256, maxzoom: 14 });
-        try { map.addLayer({ id: 'pp-hill', type: 'hillshade', source: 'pp-hs', paint: { 'hillshade-exaggeration': 0.35, 'hillshade-shadow-color': '#000' } }, map.getStyle().layers.find(l => l.type === 'line' || l.type === 'symbol')?.id); } catch (e) {}
+        try { map.addLayer({ id: 'pp-hill', type: 'hillshade', source: 'pp-hs', paint: { 'hillshade-exaggeration': 0.25, 'hillshade-shadow-color': '#000' } }, map.getStyle().layers.find(l => l.type === 'line' || l.type === 'symbol')?.id); } catch (e) {}
       }
       const full = { type: 'Feature', geometry: { type: 'LineString', coordinates: lons.map((x, i) => [x, lats[i]]) } };
       map.addSource('pp-full', { type: 'geojson', data: full });
       map.addSource('pp-done', { type: 'geojson', data: segData(total) });
-      map.addLayer({ id: 'pp-full', type: 'line', source: 'pp-full', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#ffffff', 'line-opacity': 0.28, 'line-width': 4 } });
+      map.addLayer({ id: 'pp-full', type: 'line', source: 'pp-full', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#1a1d23', 'line-opacity': 0.3, 'line-width': 4 } });
       map.addLayer({ id: 'pp-allc', type: 'line', source: 'pp-done', layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' }, paint: { 'line-color': '#000', 'line-opacity': 0.55, 'line-width': 11 } });
       map.addLayer({ id: 'pp-all', type: 'line', source: 'pp-done', layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' }, paint: { 'line-color': ['get', 'c'], 'line-width': 6.5 } });
       const c = map.getCenter(); cam0 = { center: [c.lng, c.lat], zoom: map.getZoom() };

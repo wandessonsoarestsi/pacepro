@@ -522,7 +522,6 @@
     return null;
   }
   const cssVar = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
-  const isDarkUI = () => { const c = getComputedStyle(document.body).backgroundColor.match(/\d+/g) || [255, 255, 255]; return (+c[0] + +c[1] + +c[2]) / 3 < 110; };
   const RM = {};
   // Monta o mapa no lugar de "slot". key separa o mapa do card de análise do mapa da tela da corrida.
   async function mountRouteMap(key, slot, id, day) {
@@ -599,9 +598,9 @@
     const el = node.querySelector('.rt-map');
     const map = L.map(el, { zoomControl: false, attributionControl: true, scrollWheelZoom: false, dragging: !L.Browser.mobile, tap: false, zoomSnap: 0.25 });
     rm.map = map; map.attributionControl.setPrefix(false);
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, className: isDarkUI() ? 'osm-dark' : '', attribution: '© OpenStreetMap' }).addTo(map);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(map);
     const bounds = L.latLngBounds(pts); map.fitBounds(bounds, { padding: [18, 18] });
-    L.polyline(pts, { color: isDarkUI() ? '#000' : '#fff', weight: 8, opacity: .55, interactive: false }).addTo(map);
+    L.polyline(pts, { color: '#fff', weight: 8, opacity: .55, interactive: false }).addTo(map);
     let colorLayer = null;
     const ZC = ['--z1', '--c3', '--good', '--c2', '--bad'].map(cssVar);
     const sp30 = RI.rolling(s, ins.sp, 30);

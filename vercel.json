@@ -1,7 +1,4 @@
 {
   "outputDirectory": "public",
-  "cleanUrls": true,
-  "functions": {
-    "api/plan/generate.js": { "maxDuration": 60 }
-  }
+  "cleanUrls": true
 }

@@ -1,12 +1,13 @@
 // Lista corridas recentes. Parâmetros: after e before (segundos Unix), opcionais.
-const { getAccess, strava, fail } = require('../_lib');
+const { getUser, getAccess, strava, fail } = require('../_lib');
 
 const RUN = new Set(['Run', 'TrailRun', 'VirtualRun']);
 
 module.exports = async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   try {
-    const s = await getAccess(req, res);
+    const user = await getUser(req);
+    const s = await getAccess(user.id);
     if (!s) return res.status(401).json({ error: 'Strava não conectado' });
     const q = new URLSearchParams({ per_page: '60' });
     if (req.query.after) q.set('after', String(parseInt(req.query.after, 10)));

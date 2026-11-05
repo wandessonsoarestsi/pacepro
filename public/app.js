@@ -18,35 +18,71 @@
   const MON = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
   const ddmm = s => `${s.slice(8, 10)}/${s.slice(5, 7)}`;
 
-  // Corridas conhecidas antes do Strava (análises de 08/10 e 11/10).
-  const SEED_RUNS = [
-    { id: 'seed-1', date: '2026-10-08', name: 'Corrida', km: 4.06, sec: 36 * 60 + 16, hr: 160 },
-    { id: 'seed-2', date: '2026-10-11', name: 'Orla do Cabo Branco', km: 4.01, sec: 34 * 60 + 44, hr: 160 }
-  ];
 
-  let plan = null, planSource = 'padrão';
-  let done = store.get('sub30.done', {});
-  let runs = store.get('sub30.runs', []);
+  let plan = null, planSource = '';
+  let done = {};
+  let runs = [];
+  let planMd = null;
+  const Cloud = { sb: null, user: null, session: null, enabled: false };
+  const userKey = k => `pp.${Cloud.user ? Cloud.user.id : 'local'}.${k}`;
   let strava = { connected: false, configured: true, athlete: null, checked: false };
   const today = isoLocal(new Date());
   let selected = today;
   let busy = false;
 
   /* ---------- Plano ---------- */
-  async function loadPlan() {
-    const custom = store.get('sub30.planmd', null);
-    if (custom) {
-      try { plan = P.parse(custom); planSource = 'importado'; if (plan.days.length) return; } catch (e) {}
-    }
-    const r = await fetch('/plano.md', { cache: 'no-cache' });
-    plan = P.parse(await r.text()); planSource = 'padrão';
+  function applyPlanMd(md, source) {
+    planMd = md || null;
+    plan = null;
+    if (md) { try { const p = P.parse(md); if (p.days.length) { plan = p; planSource = source || 'salvo'; } } catch (e) {} }
   }
+  function setPlanMd(md, source) {
+    applyPlanMd(md, source);
+    planWeek = null; selected = today; if (plan) clampSelected();
+    persist(); renderAll();
+  }
+  async function examplePlanMd() { const r = await fetch('/plano.md', { cache: 'no-cache' }); return r.text(); }
+
+  /* ---------- Dados do usuário (Supabase ou este aparelho) ---------- */
+  let saveTimer = null;
+  function persist() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(saveNow, 600);
+  }
+  async function saveNow() {
+    const row = { plan_md: planMd, done, updated_at: new Date().toISOString() };
+    if (Cloud.enabled && Cloud.user) {
+      const { error } = await Cloud.sb.from('user_state').upsert({ user_id: Cloud.user.id, ...row });
+      if (error) showToast('Não consegui salvar agora. Tentando de novo…', true), setTimeout(persist, 5000);
+    } else store.set(userKey('state'), row);
+  }
+  async function loadState() {
+    let row = null;
+    if (Cloud.enabled && Cloud.user) {
+      const { data, error } = await Cloud.sb.from('user_state').select('plan_md, done').eq('user_id', Cloud.user.id).maybeSingle();
+      if (error) throw error;
+      row = data;
+      if (!row) { // primeiro acesso: traz o que estava salvo neste aparelho
+        const legacyPlan = store.get('sub30.planmd', null), legacyDone = store.get('sub30.done', null);
+        if (legacyPlan || legacyDone) { row = { plan_md: legacyPlan, done: legacyDone || {} }; planMd = row.plan_md; done = row.done; await saveNow(); }
+      }
+    } else row = store.get(userKey('state'), null);
+    done = (row && row.done) || {};
+    applyPlanMd(row && row.plan_md, 'salvo');
+    runs = store.get(userKey('runs'), []);
+  }
+  function showToast(text, bad) {
+    let el = $('toast'); if (!el) { el = document.createElement('div'); el.id = 'toast'; el.className = 'toast'; document.body.appendChild(el); }
+    el.textContent = text; el.classList.toggle('bad', !!bad); el.hidden = false;
+    clearTimeout(el._t); el._t = setTimeout(() => { el.hidden = true; }, 3500);
+  }
+
   const dayOf = date => plan.days.find(d => d.date === date) || null;
-  const raceISO = () => plan.race || plan.days[plan.days.length - 1].date;
-  const goalSec = () => plan.goalSec || 1800;
-  const distKm = () => plan.distanceKm || 5;
-  const firstDay = () => plan.days[0].date;
-  const lastDay = () => plan.days[plan.days.length - 1].date;
+  const raceISO = () => plan ? (plan.race || plan.days[plan.days.length - 1].date) : addDays(today, 60);
+  const goalSec = () => (plan && plan.goalSec) || 1800;
+  const distKm = () => (plan && plan.distanceKm) || 5;
+  const firstDay = () => plan ? plan.days[0].date : today;
+  const lastDay = () => plan ? plan.days[plan.days.length - 1].date : today;
   function clampSelected() {
     if (selected < firstDay()) selected = firstDay();
     if (selected > lastDay()) selected = lastDay();
@@ -55,17 +91,24 @@
   /* ---------- Estimativa ---------- */
   function allRuns() {
     const byId = {};
-    SEED_RUNS.concat(runs).forEach(r => { byId[r.id] = r; });
+    runs.forEach(r => { byId[r.id] = r; });
     return Object.values(byId).sort((a, b) => a.date.localeCompare(b.date));
   }
   function analyses() {
-    return Object.entries(done).filter(([, v]) => v.analysis && v.analysis.estimateSec).map(([date, v]) => ({ date, estimateSec: v.analysis.estimateSec, basis: v.analysis.estimateBasis }));
+    const list = Object.entries(done).filter(([, v]) => v && v.analysis && v.analysis.estimateSec).map(([date, v]) => ({ date, estimateSec: v.analysis.estimateSec, basis: v.analysis.estimateBasis }));
+    if (done._base && done._base.sec) list.push({ date: done._base.date, estimateSec: done._base.sec, basis: 'tempo informado' });
+    return list;
   }
   const estimateAt = date => A.estimate(date, allRuns(), analyses(), distKm());
 
   /* ---------- Strava ---------- */
-  async function api(path) {
-    const r = await fetch(path, { credentials: 'same-origin' });
+  async function authHeader() {
+    if (!Cloud.enabled) return {};
+    const { data } = await Cloud.sb.auth.getSession();
+    return data.session ? { Authorization: `Bearer ${data.session.access_token}` } : {};
+  }
+  async function api(path, opts) {
+    const r = await fetch(path, { ...(opts || {}), headers: { ...(await authHeader()), ...((opts && opts.headers) || {}) } });
     let j = null; try { j = await r.json(); } catch (e) {}
     if (!r.ok) throw Object.assign(new Error((j && j.error) || 'Falha ao falar com o Strava.'), { status: r.status });
     return j;
@@ -76,11 +119,11 @@
   }
   async function syncRuns() {
     if (!strava.connected) return;
-    const after = Math.floor(D(addDays(today, -60)).getTime() / 1000);
+    const after = Math.floor(D(addDays(today, -90)).getTime() / 1000);
     const list = await api(`/api/strava/activities?after=${after}`);
     runs = list.map(a => ({ id: 's' + a.id, stravaId: a.id, date: a.start.slice(0, 10), name: a.name, km: a.distance / 1000, sec: a.moving_time, hr: a.average_heartrate ? Math.round(a.average_heartrate) : null }));
-    store.set('sub30.runs', runs);
-    store.set('sub30.synced', Date.now());
+    store.set(userKey('runs'), runs);
+    store.set(userKey('synced'), Date.now());
   }
 
   /* ---------- Topo e navegação ---------- */
@@ -156,7 +199,7 @@
     let html = `<div class="wk-top"><div><span class="eyebrow">Semana ${day.week} · ${esc(TYPE_LABEL[day.type])}</span><h3>${esc(day.title)}</h3></div><div class="badges">` +
       (day.key && isRun ? '<span class="chip key">Treino-chave</span>' : '') + (st ? '<span class="chip good">Feito</span>' : '') + `</div></div><div class="blocks">`;
     if (isRun) {
-      html += `<div class="blk run"><span class="k">Corrida</span><dl class="kv"><dt>Rua</dt><dd>${esc(day.rua)}</dd>${day.esteira ? `<dt>Esteira</dt><dd>${esc(day.esteira)} km/h · inclinação 1%</dd>` : ''}${day.targetPace ? `<dt>Ritmo-alvo</dt><dd>${A.fmtPace(day.targetPace)}/km (${(3600 / day.targetPace).toFixed(1).replace('.', ',')} km/h)</dd>` : ''}</dl>` +
+      html += `<div class="blk run"><span class="k">Corrida</span><dl class="kv"><dt>Rua</dt><dd>${esc(day.rua)}</dd>${day.esteira ? `<dt>Esteira</dt><dd>${esc(day.esteira)}${/\d$/.test(day.esteira) ? ' km/h' : ''}${/\d/.test(day.esteira) ? ' · inclinação 1%' : ''}</dd>` : ''}${day.targetPace ? `<dt>Ritmo-alvo</dt><dd>${A.fmtPace(day.targetPace)}/km (${(3600 / day.targetPace).toFixed(1).replace('.', ',')} km/h)</dd>` : ''}</dl>` +
         `<p class="note">${day.type === 'easy' ? 'FC até ~145. Passou disso, caminhe até baixar e volte a trotar.' : day.type === 'threshold' ? 'FC entre 150 e 165, ritmo constante. Se for quebrar, reduza 10–15 s/km em vez de parar.' : day.type === 'interval' ? 'Marque uma volta no relógio a cada tiro. Todos os tiros no mesmo ritmo.' : 'Km 1 levemente mais lento, km 2–4 no alvo, km 5 com tudo.'}</p>` +
         `<p class="note">Aquecimento 10' leve e desaquecimento 5–10'. Treinos fortes cedo ou na esteira.</p></div>`;
     }
@@ -173,7 +216,7 @@
     el.innerHTML = html;
 
     const f = $('finish'); if (f) f.onclick = () => finish(day);
-    const u = $('undo'); if (u) u.onclick = () => { delete done[day.date]; store.set('sub30.done', done); renderAll(); };
+    const u = $('undo'); if (u) u.onclick = () => { delete done[day.date]; persist(); renderAll(); };
     const r = $('redo'); if (r) r.onclick = () => finish(day, true);
     renderAnalysis(day);
   }
@@ -183,10 +226,11 @@
   async function finish(day, again) {
     if (busy) return;
     const isRun = !['swim', 'rest'].includes(day.type);
-    if (!isRun) { done[day.date] = { at: Date.now() }; store.set('sub30.done', done); renderAll(); return; }
+    if (!isRun) { done[day.date] = { at: Date.now() }; persist(); renderAll(); return; }
     if (!strava.connected) {
-      $('finishArea').innerHTML = `<p class="msg">Conecte o Strava para puxar os dados desse treino.</p><div class="row-actions"><a class="btn strava" href="/api/strava/login">Conectar com Strava</a><button class="btn ghost" id="noData" type="button">Marcar sem dados</button></div>`;
-      $('noData').onclick = () => { done[day.date] = { at: Date.now() }; store.set('sub30.done', done); renderAll(); };
+      $('finishArea').innerHTML = `<p class="msg">Conecte o Strava para puxar os dados desse treino.</p><div class="row-actions"><button class="btn strava" type="button" data-strava-connect>Conectar com Strava</button><button class="btn ghost" id="noData" type="button">Marcar sem dados</button></div>`;
+      $('noData').onclick = () => { done[day.date] = { at: Date.now() }; persist(); renderAll(); };
+      bindStravaButtons();
       return;
     }
     busy = true; say('Buscando o treino no Strava…');
@@ -198,7 +242,7 @@
       if (!list.length) {
         $('finishArea').innerHTML = `<p class="msg">Não achei corrida no Strava em ${ddmm(day.date)}. Sincronize o relógio com o Strava e tente de novo.</p><div class="row-actions"><button class="btn" id="retry" type="button">Tentar de novo</button><button class="btn ghost" id="noData" type="button">Marcar sem dados</button></div>`;
         $('retry').onclick = () => finish(day, again);
-        $('noData').onclick = () => { done[day.date] = { at: Date.now() }; store.set('sub30.done', done); renderAll(); };
+        $('noData').onclick = () => { done[day.date] = { at: Date.now() }; persist(); renderAll(); };
         return;
       }
       if (list.length > 1) {
@@ -220,7 +264,7 @@
       const act = await api(`/api/strava/activity?id=${encodeURIComponent(id)}`);
       const an = A.analyze(act, day, { goalSec: goalSec(), distanceKm: distKm() });
       done[day.date] = { at: Date.now(), activityId: act.id, name: act.name, analysis: an };
-      store.set('sub30.done', done);
+      persist();
       try { await syncRuns(); } catch (e) {}
       busy = false; renderAll();
     } catch (e) { busy = false; say(esc(e.message), 'bad'); }
@@ -309,14 +353,15 @@
     if (!strava.checked) { chip.textContent = 'verificando'; chip.className = 'chip'; }
     else if (strava.connected) { chip.textContent = 'conectado'; chip.className = 'chip good'; }
     else { chip.textContent = 'desconectado'; chip.className = 'chip'; }
-    const synced = store.get('sub30.synced', null);
+    const synced = store.get(userKey('synced'), null);
     $('stravaText').textContent = strava.connected
       ? `${strava.athlete && strava.athlete.name ? strava.athlete.name + ' · ' : ''}${synced ? 'última sincronização ' + new Date(synced).toLocaleString('pt-BR', { timeZone: TZ, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'ainda não sincronizado'}.`
       : strava.configured === false ? 'O Strava ainda não foi configurado neste site (faltam as chaves da API no Vercel).' : 'Conecte para puxar seus treinos e atualizar a estimativa.';
     $('stravaConnect').hidden = strava.connected;
     $('stravaSync').hidden = !strava.connected;
     $('stravaOut').hidden = !strava.connected;
-    $('planInfo').textContent = `${plan.title} · ${plan.weeks.length} semanas, ${plan.days.length} dias · prova em ${ddmm(raceISO())} · plano ${planSource}.`;
+    $('planInfo').textContent = plan ? `${plan.title} · ${plan.weeks.length} semanas, ${plan.days.length} dias · prova em ${ddmm(raceISO())}.` : 'Nenhum plano ainda. Gere um acima, importe um arquivo .md ou use o plano de exemplo.';
+    renderProfile();
     const t = store.get('sub30.theme', 'system');
     document.querySelectorAll('#themePills button').forEach(b => b.setAttribute('aria-checked', String(b.dataset.t === t)));
   }
@@ -327,7 +372,7 @@
     renderSettings();
   });
   $('stravaSync').onclick = async () => { $('stravaSync').disabled = true; try { await syncRuns(); } catch (e) {} $('stravaSync').disabled = false; renderAll(); };
-  $('stravaOut').onclick = async () => { try { await fetch('/api/strava/logout', { method: 'POST' }); } catch (e) {} strava.connected = false; renderAll(); };
+  $('stravaOut').onclick = async () => { try { await api('/api/strava/logout', { method: 'POST' }); } catch (e) {} strava.connected = false; runs = []; store.set(userKey('runs'), runs); renderAll(); };
   $('mdFile').onchange = async e => {
     const file = e.target.files[0]; if (!file) return;
     const msg = $('planMsg'); msg.hidden = false;
@@ -336,62 +381,57 @@
       const p = P.parse(text);
       if (!p.days.length) throw new Error('Não encontrei nenhum dia de treino. Confira se as tabelas têm a coluna Data com "Seg 09/11", "Ter 10/11"...');
       if (!p.race) throw new Error('Não encontrei a data da prova. Inclua uma linha como "Prova: domingo, 13/12/2026".');
-      store.set('sub30.planmd', text); plan = p; planSource = 'importado'; planWeek = null;
+      setPlanMd(text, 'importado');
       msg.className = 'msg good'; msg.textContent = `Plano importado: ${p.weeks.length} semanas, ${p.days.length} dias, prova em ${ddmm(p.race)}.`;
       clampSelected(); renderAll();
     } catch (err) { msg.className = 'msg bad'; msg.textContent = err.message; }
     e.target.value = '';
   };
-  $('planReset').onclick = async () => { store.del('sub30.planmd'); await loadPlan(); planWeek = null; clampSelected(); const msg = $('planMsg'); msg.hidden = false; msg.className = 'msg'; msg.textContent = 'Plano padrão restaurado.'; renderAll(); };
+  $('planReset').onclick = async () => { try { setPlanMd(await examplePlanMd(), 'exemplo'); const msg = $('planMsg'); msg.hidden = false; msg.className = 'msg'; msg.textContent = 'Plano de exemplo carregado.'; } catch (e) { showToast('Não consegui carregar o exemplo.', true); } };
   let clearArmed = false;
   $('clearDone').onclick = () => {
     const msg = $('clearMsg');
     if (!clearArmed) { clearArmed = true; $('clearDone').textContent = 'Toque de novo para apagar'; msg.hidden = false; msg.className = 'msg'; msg.textContent = 'Isso apaga as marcações e análises deste aparelho.'; setTimeout(() => { clearArmed = false; $('clearDone').textContent = 'Apagar treinos marcados'; msg.hidden = true; }, 5000); return; }
-    done = {}; store.set('sub30.done', done); clearArmed = false; $('clearDone').textContent = 'Apagar treinos marcados'; msg.className = 'msg good'; msg.textContent = 'Marcações apagadas.'; renderAll();
+    done = {}; persist(); clearArmed = false; $('clearDone').textContent = 'Apagar treinos marcados'; msg.className = 'msg good'; msg.textContent = 'Marcações apagadas.'; renderAll();
   };
 
 
-  /* ---------- Gerar plano com IA ---------- */
+  /* ---------- Gerar plano ---------- */
   let generated = null;
-  function levelText() {
-    const est = estimateAt(today);
-    const rs = allRuns().slice(-6).map(r => `${ddmm(r.date)}: ${r.km.toFixed(1)} km em ${A.fmtTime(r.sec)} (${A.fmtPace(r.sec / r.km)}/km${r.hr ? ', FC ' + r.hr : ''})`);
-    return (est ? `Tempo estimado hoje nos 5 km: ${A.fmtTime(est.sec)}. ` : '') + (rs.length ? 'Últimas corridas: ' + rs.join('; ') + '.' : '');
-  }
+  const toSec = s => { const p = String(s || '').trim().split(':').map(Number); if (p.some(isNaN) || p.length < 2) return null; return p.length === 3 ? p[0] * 3600 + p[1] * 60 + p[2] : p[0] * 60 + p[1]; };
   (function initGen() {
     const f = $('genForm'); if (!f) return;
     $('gStart').value = addDays(today, 1);
-    f.onsubmit = async e => {
+    f.onsubmit = e => {
       e.preventDefault();
       const msg = $('genMsg'); msg.hidden = false; $('genActions').hidden = true;
-      const goal = $('gGoal').value.trim();
-      if (!$('gRace').value || !$('gStart').value) { msg.className = 'msg bad'; msg.textContent = 'Preencha a data da prova e o início do plano.'; return; }
-      if (!/^\d{1,2}(:\d{2}){1,2}$/.test(goal)) { msg.className = 'msg bad'; msg.textContent = 'Escreva o tempo-objetivo como 30:00 ou 1:55:00.'; return; }
-      $('gBtn').disabled = true; msg.className = 'msg'; msg.textContent = 'Gerando o plano. Isso leva até um minuto…';
+      const goalSec = toSec($('gGoal').value), race = $('gRace').value, start = $('gStart').value;
+      if (!race || !start) { msg.className = 'msg bad'; msg.textContent = 'Preencha a data da prova e o início do plano.'; return; }
+      if (race <= start) { msg.className = 'msg bad'; msg.textContent = 'A prova precisa ser depois do início do plano.'; return; }
+      if ((D(race) - D(start)) / 864e5 > 168) { msg.className = 'msg bad'; msg.textContent = 'Escolha um período de até 24 semanas.'; return; }
+      if (!goalSec) { msg.className = 'msg bad'; msg.textContent = 'Escreva o tempo-objetivo como 30:00 ou 1:55:00.'; return; }
+      let cur = toSec($('gCur').value);
+      if ($('gCur').value.trim() && !cur) { msg.className = 'msg bad'; msg.textContent = 'Escreva o tempo atual nos 5 km como 42:30.'; return; }
+      if (!cur) { const est = estimateAt(today); cur = est ? est.sec * (5 / distKm()) : null; }
       try {
-        const r = await fetch('/api/plan/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-          raceDate: $('gRace').value, startDate: $('gStart').value, distanceKm: $('gDist').value, goal,
-          runDays: $('gDays').value, swim: $('gSwim').checked, gym: $('gGym').checked, notes: $('gNotes').value, level: levelText()
-        }) });
-        const j = await r.json().catch(() => ({}));
-        if (!r.ok) throw new Error(j.error || 'Não consegui gerar o plano.');
-        const p = P.parse(j.md);
-        if (!p.days.length || !p.race) throw new Error('A IA devolveu um plano fora do formato. Tente gerar de novo.');
-        generated = j.md;
+        const md = window.PlanGenerator.generate({ start, race, distanceKm: +$('gDist').value, goalSec, currentSec5k: cur, runDays: +$('gDays').value, swim: $('gSwim').checked, gym: $('gGym').checked, level: $('gLevel').value });
+        const p = P.parse(md);
+        if (!p.days.length) throw new Error('Não consegui montar o plano com esses dados.');
+        generated = md;
         msg.className = 'msg good';
-        msg.textContent = `Plano gerado: ${p.weeks.length} semanas, ${p.days.length} dias, prova em ${ddmm(p.race)}.${j.truncated ? ' A resposta veio cortada; confira as últimas semanas antes de usar.' : ''}`;
+        msg.textContent = `Plano pronto: ${p.weeks.length} semanas até ${ddmm(p.race)}.${cur ? '' : ' Sem corridas registradas, usei uma estimativa a partir da meta; informe seu tempo atual para ajustar.'}`;
         const a = $('gDownload'); if (a.dataset.url) URL.revokeObjectURL(a.dataset.url);
-        a.dataset.url = URL.createObjectURL(new Blob([j.md], { type: 'text/markdown' })); a.href = a.dataset.url;
+        a.dataset.url = URL.createObjectURL(new Blob([md], { type: 'text/markdown' })); a.href = a.dataset.url;
         $('genActions').hidden = false;
       } catch (err) { msg.className = 'msg bad'; msg.textContent = err.message; }
-      $('gBtn').disabled = false;
     };
     $('gUse').onclick = () => {
       if (!generated) return;
-      store.set('sub30.planmd', generated); plan = P.parse(generated); planSource = 'gerado por IA'; planWeek = null;
-      selected = today; clampSelected(); $('genActions').hidden = true;
-      const msg = $('genMsg'); msg.className = 'msg good'; msg.textContent = 'Plano novo em uso. O anterior pode ser restaurado em "Voltar ao plano padrão".';
-      renderAll();
+      const curTyped = toSec($('gCur').value);
+      if (curTyped) done._base = { date: today, sec: curTyped };
+      setPlanMd(generated, 'gerado no app');
+      $('genActions').hidden = true;
+      const msg = $('genMsg'); msg.className = 'msg good'; msg.textContent = 'Plano novo em uso. O plano anterior pode ser restaurado em "Voltar ao plano padrão".';
     };
   })();
 
@@ -401,27 +441,78 @@
     const h = (location.hash || '#hoje').slice(1); const v = VIEWS.includes(h) ? h : 'hoje';
     document.querySelectorAll('.view').forEach(s => { s.hidden = s.dataset.view !== v; });
     document.querySelectorAll('.tabbar a').forEach(a => a.setAttribute('aria-current', a.dataset.tab === v ? 'page' : 'false'));
-    document.querySelector('.topbar').hidden = v !== 'hoje';
+    document.querySelector('.topbar').hidden = v !== 'hoje' || !plan;
   }
   window.addEventListener('hashchange', () => { route(); window.scrollTo(0, 0); });
   $('prevDay').onclick = () => { selected = addDays(selected, -1); renderAll(); };
   $('nextDay').onclick = () => { selected = addDays(selected, 1); renderAll(); };
 
-  function renderAll() { renderTop(); renderSummary(); renderWorkout(); renderPlan(); renderProgress(); renderSettings(); route(); }
+  function renderAll() {
+    const has = !!plan;
+    document.querySelectorAll('[data-no-plan]').forEach(el => { el.hidden = has; });
+    document.querySelectorAll('[data-needs-plan]').forEach(el => { el.hidden = !has; });
+    if (has) { renderTop(); renderSummary(); renderWorkout(); renderPlan(); }
+    renderProgress(); renderSettings(); bindStravaButtons(); route();
+  }
+  function bindStravaButtons() {
+    document.querySelectorAll('[data-strava-connect]').forEach(b => {
+      b.onclick = async () => {
+        if (Cloud.enabled && !Cloud.user) return;
+        b.disabled = true;
+        try { const j = await api('/api/strava/login'); location.href = j.url; }
+        catch (e) { b.disabled = false; showToast(e.message, true); }
+      };
+    });
+  }
+  document.querySelectorAll('[data-example]').forEach(b => b.onclick = async () => { try { setPlanMd(await examplePlanMd(), 'exemplo'); } catch (e) { showToast('Não consegui carregar o exemplo.', true); } });
+  $('signOut').onclick = async () => { if (Cloud.enabled) { await Cloud.sb.auth.signOut(); } location.replace('/'); };
+  function renderProfile() {
+    const u = Cloud.user;
+    $('profileCard').hidden = !u;
+    if (!u) return;
+    const m = u.user_metadata || {};
+    $('pName').textContent = m.full_name || m.name || u.email;
+    $('pEmail').textContent = u.email || '';
+    if (m.avatar_url) { $('pAvatar').src = m.avatar_url; $('pAvatar').hidden = false; }
+  }
+
+  async function startCloud() {
+    let cfg = null;
+    try { const r = await fetch('/api/config'); if (r.ok) cfg = await r.json(); } catch (e) {}
+    if (!cfg || !cfg.supabaseUrl || !cfg.supabaseAnonKey || !window.supabase) return false;
+    Cloud.sb = window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, { auth: { flowType: 'pkce', detectSessionInUrl: true, persistSession: true, autoRefreshToken: true } });
+    Cloud.enabled = true;
+    const { data } = await Cloud.sb.auth.getSession();
+    Cloud.session = data.session; Cloud.user = data.session ? data.session.user : null;
+    Cloud.sb.auth.onAuthStateChange((ev, session) => { if (ev === 'SIGNED_OUT') location.replace('/'); Cloud.session = session; });
+    return true;
+  }
+  function showLogin(msg) {
+    $('app').hidden = true; $('login').hidden = false;
+    if (msg) { $('loginMsg').hidden = false; $('loginMsg').textContent = msg; }
+    $('googleBtn').onclick = async () => {
+      $('googleBtn').disabled = true;
+      const { error } = await Cloud.sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: location.origin + '/' } });
+      if (error) { $('googleBtn').disabled = false; $('loginMsg').hidden = false; $('loginMsg').textContent = 'Não consegui abrir o login do Google. Tente de novo.'; }
+    };
+  }
 
   (async function boot() {
-    try { await loadPlan(); } catch (e) { document.querySelector('main').innerHTML = '<p class="msg bad">Não consegui carregar o plano.</p>'; return; }
-    clampSelected();
-    if (plan.race > today) $('gRace').value = plan.race;
-    if (plan.goalSec) $('gGoal').value = A.fmtTime(plan.goalSec);
+    const params = new URLSearchParams(location.search);
+    const q = params.get('strava');
+    const cloud = await startCloud();
+    if (params.has('code') || params.has('error_description') || q) history.replaceState(null, '', '/' + location.hash);
+    if (cloud && !Cloud.user) { showLogin(params.get('error_description') ? 'O login não foi concluído. Tente de novo.' : null); return; }
+    try { await loadState(); } catch (e) { showToast('Não consegui carregar seus dados.', true); }
+    if (!cloud && !plan) { try { applyPlanMd(await examplePlanMd(), 'exemplo'); } catch (e) {} }
+    if (plan) { clampSelected(); if (plan.race > today) $('gRace').value = plan.race; if (plan.goalSec) $('gGoal').value = A.fmtTime(plan.goalSec); }
     renderAll();
     await checkStrava();
-    const q = new URLSearchParams(location.search).get('strava');
-    if (q) history.replaceState(null, '', location.pathname + location.hash);
     renderSettings();
     if (strava.connected) { try { await syncRuns(); } catch (e) {} }
     renderAll();
-    if (q === 'erro' || q === 'scope') { location.hash = 'ajustes'; const m = $('planMsg'); }
-    setInterval(renderSummary, 60000);
+    if (q === 'ok') showToast('Strava conectado.');
+    if (q === 'erro' || q === 'scope') { location.hash = 'ajustes'; showToast(q === 'scope' ? 'Autorize o acesso às atividades para analisar os treinos.' : 'Não consegui conectar ao Strava. Tente de novo.', true); }
+    setInterval(() => { if (plan) renderSummary(); }, 60000);
   })();
 })();

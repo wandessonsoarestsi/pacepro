@@ -1,24 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#18A89B"/>
-      <stop offset="1" stop-color="#0D7770"/>
-    </linearGradient>
-    <clipPath id="c"><rect width="1024" height="1024" rx="224"/></clipPath>
-  </defs>
-  <g clip-path="url(#c)">
-    <rect width="1024" height="1024" fill="url(#bg)"/>
-    <!-- sol nascendo no horizonte -->
-    <circle cx="512" cy="430" r="120" fill="#F08A24"/>
-    <rect x="0" y="430" width="1024" height="594" fill="url(#bg)"/>
-    <!-- rua em perspectiva -->
-    <path d="M 470 430 L 554 430 L 900 1024 L 124 1024 Z" fill="#FFFFFF"/>
-    <!-- faixa central tracejada -->
-    <path d="M 507 470 L 517 470 L 521 520 L 503 520 Z" fill="#0F8077"/>
-    <path d="M 500 575 L 524 575 L 530 660 L 494 660 Z" fill="#0F8077"/>
-    <path d="M 489 745 L 535 745 L 545 880 L 479 880 Z" fill="#0F8077"/>
-    <path d="M 472 970 L 552 970 L 558 1024 L 466 1024 Z" fill="#0F8077"/>
-    <!-- linha do horizonte -->
-    <rect x="96" y="426" width="832" height="10" rx="5" fill="#FFFFFF" opacity=".35"/>
+  <rect width="1024" height="1024" rx="224" fill="#128C83"/>
+  <g transform="rotate(-20 512 512)">
+    <g fill="#FFFFFF">
+      <path d="M340 560 C300 440 320 300 400 290 C480 280 500 420 470 560 C455 620 360 620 340 560 Z"/>
+      <ellipse cx="410" cy="700" rx="62" ry="80"/>
+    </g>
+    <g fill="#F08A24">
+      <path d="M600 380 C560 260 580 120 660 110 C740 100 760 240 730 380 C715 440 620 440 600 380 Z"/>
+      <ellipse cx="670" cy="520" rx="62" ry="80"/>
+    </g>
   </g>
 </svg>

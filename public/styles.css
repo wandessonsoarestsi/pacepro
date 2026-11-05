@@ -512,3 +512,7 @@ body.noscroll{overflow:hidden}
 .vs-spin{width:18px;height:18px;border-radius:50%;border:2.5px solid rgba(255,255,255,.25);border-top-color:#fff;animation:vsspin .8s linear infinite;flex:none;display:inline-block}
 .vs-spin.sm{width:14px;height:14px;vertical-align:-2px;margin-right:6px;border-color:rgba(127,127,127,.35);border-top-color:currentColor}
 @keyframes vsspin{to{transform:rotate(360deg)}}
+.vs-opt{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:14px;background:var(--card,#fff);border:1px solid var(--line,rgba(0,0,0,.08));cursor:pointer;text-align:left}
+.vs-opt input{width:20px;height:20px;flex:none;margin:0;accent-color:var(--ink,#111)}
+.vs-opt span{display:flex;flex-direction:column;gap:2px;min-width:0}
+.vs-opt b{font-size:15px}.vs-opt small{font-size:12.5px;color:var(--muted,#6b7280);line-height:1.3}

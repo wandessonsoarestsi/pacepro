@@ -870,8 +870,9 @@
     $('moreRuns').hidden = list.length <= 6;
     $('moreRuns').textContent = showAllRuns ? 'Mostrar menos' : `Ver todas (${list.length})`;
     $('chartTitle').textContent = `Tempo estimado nos ${String(distKm()).replace('.', ',')} km`;
-    $('runs').innerHTML = shown.map(r => `<${r.stravaId ? `button type="button" data-sid="${esc(r.stravaId)}"` : 'div style="cursor:default"'} class="lrow"><span class="ico run">${ICON.run}</span><span style="min-width:0"><span class="t">${esc(r.name)}</span><span class="s">${ddmm(r.date)} · ${r.km.toFixed(2).replace('.', ',')} km · ${A.fmtTime(r.sec)}${r.hr ? ` · FC ${r.hr}` : ''}</span></span><span class="v">${A.fmtPace(r.sec / r.km)}<small>/km</small></span></${r.stravaId ? 'button' : 'div'}>`).join('') || '<p class="muted">Nenhuma corrida ainda.</p>';
+    $('runs').innerHTML = shown.map(r => `<${r.stravaId ? `button type="button" data-sid="${esc(r.stravaId)}"` : 'div style="cursor:default"'} class="lrow">${r.trainer ? treadSvg() : routeSvg(r.poly, 64)}<span style="min-width:0"><span class="t">${esc(r.name)}</span><span class="s">${ddmm(r.date)} · ${r.km.toFixed(2).replace('.', ',')} km · ${A.fmtTime(r.sec)}${r.hr ? ` · FC ${r.hr}` : ''}</span></span><span class="v">${A.fmtPace(r.sec / r.km)}<small>/km</small></span></${r.stravaId ? 'button' : 'div'}>`).join('') || '<p class="muted">Nenhuma corrida ainda.</p>';
     $('runs').querySelectorAll('[data-sid]').forEach(b => b.onclick = () => openRunSheet(b.dataset.sid));
+    fillMissingPolys(shown);
 
     const dates = [...new Set(rs.map(r => r.date).concat(analyses().map(a => a.date)))].sort().filter(x => x <= today);
     const pts = dates.map(d => ({ d, v: (estimateAt(d) || {}).sec })).filter(p => p.v);
@@ -1954,6 +1955,10 @@
     }
     return pts;
   }
+  // Miniatura padrão da esteira: o "percurso" é a volta da lona entre os dois rolos.
+  function treadSvg() {
+    return `<svg class="route tread" viewBox="0 0 64 64" aria-hidden="true"><path class="r" d="M10 40l44-12"/><path d="M15 31.5h34a8 8 0 0 1 0 16H15a8 8 0 0 1 0-16z" transform="rotate(-15 32 39.5)"/><circle class="rl" cx="15" cy="39.5" r="4" transform="rotate(-15 32 39.5)"/><circle class="rl" cx="49" cy="39.5" r="4" transform="rotate(-15 32 39.5)"/><circle class="s" cx="25" cy="34.5" r="2.6" transform="rotate(-15 32 39.5)"/><circle class="e" cx="31" cy="31.5" r="2.6" transform="rotate(-15 32 39.5)"/><path class="r" d="M47 26l5-12M52 14h5"/></svg>`;
+  }
   function routeSvg(poly, size, indoor) {
     size = size || 64;
     let pts; try { pts = poly ? decodePoly(poly) : []; } catch (e) { pts = []; }
@@ -1994,7 +1999,7 @@
       } catch (e) { if (e.status === 401) break; }
     }
     polyBusy = false;
-    if (changed) { store.set('pp.polyfix', fix); store.set(userKey('runs'), runs); renderRecent(); }
+    if (changed) { store.set('pp.polyfix', fix); store.set(userKey('runs'), runs); renderRecent(); if (view === 'progresso') renderProgress(); }
   }
   function renderRecent() {
     const box = $('recentCard'); if (!box) return;

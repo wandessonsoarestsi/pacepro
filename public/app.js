@@ -278,7 +278,7 @@
       if (x.type === 'event') add(plan.event, x.date);
       else if (x.type !== 'rest' || x.gym) { if (x.type !== 'rest') add(sportOfType(x.type), x.date); }
       if (x.gym && x.type !== 'gym') add('gym', x.date);
-      if (x.second) add(sportOfType(x.second.type), x.date);
+      (x.seconds || []).forEach(y => add(sportOfType(y.type), x.date));
     });
     const tri = ['swim', 'bike', 'run', 'brick'].reduce((a, k) => t[k] ? { n: a.n + t[k].n, done: a.done + t[k].done } : a, { n: 0, done: 0 });
     if (tri.n) t.tri = tri;
@@ -293,7 +293,7 @@
       const ico = ICON[sp.k === 'run' ? 'run' : sp.k] || ICON.cross;
       const cls = sp.k === 'run' ? 'run' : sp.k === 'gym' ? 'gym' : 'swim';
       return `<div class="sp-row"><span class="ico ${cls}">${ico}</span><span class="sp-txt"><span class="t">${esc(sp.label)}${sp.focus ? ' <span class="chip key sm">Foco</span>' : ''}${sp.event ? ' <span class="chip sm">prova</span>' : ''}</span>` +
-        `<span class="s">${sp.goal ? 'Meta: ' + esc(sp.goal) : 'Sem meta definida'}</span></span>` +
+        `<span class="s">${sp.goal ? 'Meta: ' + esc(sp.goal) : 'Sem meta: treinos leves em volta do foco'}${sp.days && sp.days.length ? ' · ' + sp.days.map(d => WD[(d + 1) % 7]).join(', ') : ''}</span></span>` +
         (w ? `<span class="sp-n"><b>${t.done}/${t.n}</b><small>${t.n === 1 ? 'treino' : 'treinos'}</small></span>` : '') + `</div>`;
     }).join('');
     return `<div class="card-head"><div><span class="eyebrow">${w ? `Semana ${w.n}` : 'Ciclo'} · ${esc(eventLabel())} em ${ddmm(raceISO())}</span><h3>Modalidades e metas</h3></div></div>` +
@@ -772,7 +772,7 @@
     if (!day) { el.innerHTML = `<p class="muted">Sem treino planejado para este dia.</p>`; $('analysis').hidden = true; return; }
     const st = done[day.date];
     const isRun = isRunType(day.type);
-    const also = day.second ? ` + ${TYPE_LABEL[day.second.type] || 'treino'}` : day.gym && day.type !== 'gym' && hybridPlan() ? ' + Musculação' : '';
+    const also = (day.gym && day.type !== 'gym' && hybridPlan() ? ' + Musculação' : '') + (day.seconds || []).map(y => ` + ${TYPE_LABEL[y.type] || 'treino'}`).join('');
     let html = `<div class="wk-top"><div><span class="eyebrow">${day.recovery ? `Recuperação · dia ${day.recovery} de 7` : esc(TYPE_LABEL[day.type] + also)}${day.key && isRun ? ' · treino-chave' : ''}</span><h3>${esc(day.title)}</h3></div>` +
       (st ? `<span class="chip good">${CHECK}Feito</span>` : '') + `</div>`;
     if (isRun) {
@@ -795,7 +795,8 @@
     };
     if (isCross(day.type) && day.type !== 'gym') html += sessBlk(day.type, day.title, day.rua, TYPE_LABEL[day.type]);
     if (day.gym) html += gymBlock(day.gym, day, (!isRun && !isCross(day.type)) || day.type === 'gym');
-    if (day.second) html += sessBlk(day.second.type, day.second.title, day.second.rua, `2º treino · ${TYPE_LABEL[day.second.type] || 'Treino'}`);
+    const nGym = day.gym && day.type !== 'gym' ? 1 : 0;
+    (day.seconds || []).forEach((y, i) => { html += sessBlk(y.type, y.title, y.rua, `${i + 2 + nGym}º treino · ${TYPE_LABEL[y.type] || 'Treino'}`); });
     if (day.type === 'rest' && !day.gym) html += `<p class="muted">${esc(day.rua && !/^descanso$/i.test(day.rua) ? noEmoji(day.rua) : 'Descanso total. Sono, água e boa comida.')}</p>`;
     const adj = day.movedFrom ? `Treino de ${WD[D(day.movedFrom).getDay()]} ${ddmm(day.movedFrom)} remarcado para hoje.` : day.movedTo ? '' : day.skipped ? '' : day.softened ? `Era "${day.softened}". Trocado por leve para recuperar.` : '';
     if (day.movedFrom || day.movedTo || day.skipped || day.softened) html += `<div class="blk adj"><span class="k">Plano ajustado</span>${adj ? `<p class="note">${esc(adj)}</p>` : ''}<button class="linkbtn" id="undoAdj" type="button">Desfazer ajuste</button></div>`;
@@ -1207,7 +1208,7 @@
     $('weekDays').innerHTML = w.days.map(x => {
       const dt = D(x.date); const kind = x.type === 'gym' ? 'gym' : isCross(x.type) ? 'swim' : x.type === 'rest' ? (x.gym ? 'gym' : 'rest') : 'run';
       const right = done[x.date] ? `<span class="done">${CHECK}</span>` : x.gym && x.type !== 'gym' ? `<span class="chip">${esc(x.gym)}</span>` : '';
-      const plus = x.second ? ` · + ${esc(x.second.title)}` : x.gym && x.type !== 'gym' && hybridPlan() ? ` · + musculação ${esc(x.gym)}` : '';
+      const plus = (x.gym && x.type !== 'gym' && hybridPlan() ? ` · + musculação ${esc(x.gym)}` : '') + (x.seconds || []).map(y => ` · + ${esc(y.title)}`).join('');
       return `<button type="button" class="lrow ${x.date === today ? 'today' : ''}" data-d="${x.date}"><span class="ico ${x.key && kind === 'run' ? 'key' : kind}">${ICON[x.type] || ICON[kind]}</span><span style="min-width:0"><span class="t">${esc(x.title)}</span><span class="s">${x.date === today ? 'hoje' : WD[dt.getDay()] + ' ' + ddmm(x.date)} · ${esc(TYPE_LABEL[x.type])}${x.key && kind === 'run' ? ' · chave' : ''}${plus}</span></span>${right}<span class="chev" aria-hidden="true">›</span></button>`;
     }).join('');
     document.querySelectorAll('#weekDays .lrow').forEach(b => b.onclick = () => { selected = b.dataset.d; location.hash = 'hoje'; renderAll(); window.scrollTo(0, 0); });
@@ -1345,22 +1346,39 @@
   const EVENT_OK = ['run', 'tri', 'hyrox', 'swim', 'bike', 'crossfit'];
   // Estado do formulário: { on: [chaves], focus: {k: true}, goal: {k: texto}, event }. Fica salvo neste aparelho.
   let genSp = store.get('pacepro.genSports', null) || { on: ['run'], focus: { run: true }, goal: {}, event: 'run' };
+  genSp.days = genSp.days || {};
   const saveGenSp = () => store.set('pacepro.genSports', genSp);
   const genOn = () => [...document.querySelectorAll('#gSports [data-sport]:checked')].map(b => b.dataset.sport).concat($('gOther').value.trim() ? ['other'] : []);
+  // Foco = modalidade com meta (a corrida, quando é a prova principal, tem o tempo-objetivo como meta).
+  const isFocusK = k => !!(genSp.goal[k] || '').trim() || (k === 'run' && genSp.event === 'run');
   const genLabel = k => k === 'other' ? ($('gOther').value.trim() || 'Outra') : SPORT_LABEL[k];
   function renderGenSports() {
     const on = genOn();
     genSp.on = on.filter(k => k !== 'other');
     const box = $('gGoals');
     box.innerHTML = on.map(k => `<div class="sg-row"><span class="ico ${k === 'run' ? 'run' : k === 'gym' ? 'gym' : 'swim'}" aria-hidden="true">${ICON[k] || ICON.cross}</span><b>${esc(genLabel(k))}</b>` +
-      `<button type="button" class="focus-tg" data-focus="${k}" aria-pressed="${!!genSp.focus[k]}">Foco</button>` +
-      `<input type="text" maxlength="80" data-goal="${k}" placeholder="${esc(GOAL_HINT[k] || 'Meta (opcional)')}" value="${esc(genSp.goal[k] || '')}" aria-label="Meta de ${esc(genLabel(k))}"></div>`).join('') ||
+      `<span class="focus-tg" data-focus="${k}" aria-pressed="${isFocusK(k)}">${isFocusK(k) ? 'Foco' : 'Complementar'}</span>` +
+      `<input type="text" maxlength="80" data-goal="${k}" placeholder="${esc(GOAL_HINT[k] || 'Meta')}" value="${esc(genSp.goal[k] || '')}" aria-label="Meta de ${esc(genLabel(k))}">` +
+      (k === 'tri' ? '' : `<div class="sg-days" role="group" aria-label="Dias de ${esc(genLabel(k))}">${['S', 'T', 'Q', 'Q', 'S', 'S', 'D'].map((l, d) => `<button type="button" data-sday="${k}" data-d="${d}" aria-pressed="${(genSp.days[k] || []).includes(d)}" aria-label="${WDL[(d + 1) % 7]}">${l}</button>`).join('')}<small class="muted">${(genSp.days[k] || []).length ? 'dias fixos' : 'dias automáticos'}</small></div>`) +
+      `</div>`).join('') ||
       '<small class="muted">Escolha pelo menos uma modalidade.</small>';
-    box.querySelectorAll('[data-focus]').forEach(b => b.onclick = () => { const k = b.dataset.focus; genSp.focus[k] = !genSp.focus[k]; saveGenSp(); renderGenSports(); });
-    box.querySelectorAll('[data-goal]').forEach(i => i.oninput = () => { genSp.goal[i.dataset.goal] = i.value; saveGenSp(); });
+    // Meta escrita = foco; meta apagada = complementar (o botão Foco continua podendo mudar isso).
+    box.querySelectorAll('[data-goal]').forEach(i => i.oninput = () => {
+      const k = i.dataset.goal, had = !!(genSp.goal[k] || '').trim(), has = !!i.value.trim();
+      genSp.goal[k] = i.value;
+      if (has !== had) { const b = box.querySelector(`[data-focus="${k}"]`); if (b) { b.setAttribute('aria-pressed', String(isFocusK(k))); b.textContent = isFocusK(k) ? 'Foco' : 'Complementar'; } }
+      saveGenSp();
+    });
+    // Dias de cada modalidade: marcar um dia aqui também o marca em "Dias de treino".
+    box.querySelectorAll('[data-sday]').forEach(b => b.onclick = () => {
+      const k = b.dataset.sday, d = +b.dataset.d, cur = genSp.days[k] || [];
+      genSp.days[k] = cur.includes(d) ? cur.filter(x => x !== d) : cur.concat(d).sort((a, c) => a - c);
+      if (!cur.includes(d)) { const g = document.querySelector(`#gDays [data-wd="${d}"]`); if (g && !g.checked) { g.checked = true; g.dispatchEvent(new Event('change')); } }
+      saveGenSp(); renderGenSports();
+    });
     // Prova principal: só modalidades com prova; a escolhida antes continua se ainda estiver marcada.
     const evs = on.filter(k => EVENT_OK.includes(k));
-    if (!evs.includes(genSp.event)) genSp.event = evs.find(k => genSp.focus[k]) || evs[0] || 'goal';
+    if (!evs.includes(genSp.event)) genSp.event = evs.find(k => (genSp.goal[k] || '').trim()) || evs[0] || 'goal';
     $('gEvent').innerHTML = evs.map(k => `<option value="${k}"${genSp.event === k ? ' selected' : ''}>${esc(EVENT_LABEL[k])}</option>`).join('') + `<option value="goal"${genSp.event === 'goal' ? ' selected' : ''}>Sem prova: só as metas, até a data</option>`;
     const runEv = genSp.event === 'run';
     document.querySelectorAll('#genForm [data-run-event]').forEach(el => { el.hidden = !runEv; });
@@ -1379,8 +1397,8 @@
     const ks = plan.sports.map(x => x.k);
     document.querySelectorAll('#gSports [data-sport]').forEach(b => { b.checked = ks.includes(b.dataset.sport); });
     const o = plan.sports.find(x => x.k === 'other'); $('gOther').value = o ? o.label : '';
-    genSp.focus = {}; genSp.goal = {};
-    plan.sports.forEach(x => { if (x.focus) genSp.focus[x.k] = true; if (x.goal) genSp.goal[x.k] = x.goal; });
+    genSp.focus = {}; genSp.goal = {}; genSp.days = {};
+    plan.sports.forEach(x => { if (x.focus) genSp.focus[x.k] = true; if (x.goal) genSp.goal[x.k] = x.goal; if (x.days && x.days.length) genSp.days[x.k] = x.days; });
     genSp.event = plan.event || 'run';
     $('gRace').value = raceISO();
     if (plan.event === 'run' && plan.goalSec) { $('gDist').value = nearDist(distKm()); $('gGoal').value = A.fmtTime(goalSec()); }
@@ -1433,14 +1451,22 @@
       if (race <= start) return fail(`A ${what} precisa ser depois do início do plano.`);
       if ((D(race) - D(start)) / 864e5 > 168) return fail('Escolha um período de até 24 semanas.');
       if (runEv && !goalSec) return fail('Escreva o tempo-objetivo como 30:00 ou 1:55:00.');
+      if (hybrid && !runEv && !on.some(k => (genSp.goal[k] || '').trim())) return fail('Escreva a meta de pelo menos uma modalidade (ex.: sub 2h no Hyrox). As modalidades sem meta se encaixam em volta dela.');
       const wd = genDays();
-      if (wd.length < 2 || wd.length > 6) return fail(`Escolha de 2 a 6 dias de ${hybrid ? 'treino' : 'corrida'} na semana.`);
+      const fixedOf = k => hybrid && k !== 'tri' ? (genSp.days[k] || []) : [];
+      const allDays = [...new Set(wd.concat(...on.map(fixedOf)))];
+      if (allDays.length < 2 || wd.length > 6) return fail(`Escolha de 2 a 6 dias de ${hybrid ? 'treino' : 'corrida'} na semana.`);
+      // No máximo 3 atividades no mesmo dia.
+      for (let d = 0; d < 7; d++) {
+        const n = on.filter(k => fixedOf(k).includes(d));
+        if (n.length > 3) return fail(`${WDL[(d + 1) % 7]} ficou com ${n.length} atividades (${n.map(genLabel).join(', ')}). O máximo é 3 por dia.`);
+      }
       let cur = toSec($('gCur').value);
       if ($('gCur').value.trim() && !cur) return fail('Escreva o tempo atual nos 5 km como 42:30.');
       if (!cur) { const est = estimateAt(today); cur = est ? est.sec * (5 / distKm()) : null; }
       try {
         // Só corrida: plano de corrida como antes. Com outras modalidades: plano híbrido com a semana inteira.
-        const sports = on.map(k => ({ k, focus: !!genSp.focus[k], goal: (genSp.goal[k] || '').trim(), name: k === 'other' ? $('gOther').value.trim() : '' }));
+        const sports = on.map(k => ({ k, focus: isFocusK(k), goal: (genSp.goal[k] || '').trim(), name: k === 'other' ? $('gOther').value.trim() : '', days: fixedOf(k) }));
         const md = window.PlanGenerator.generate(hybrid
           ? { start, race, distanceKm: runEv ? +$('gDist').value : 5, goalSec: runEv ? goalSec : null, currentSec5k: cur, trainWeekdays: wd, sports, event: genSp.event, level: $('gLevel').value }
           : { start, race, distanceKm: +$('gDist').value, goalSec, currentSec5k: cur, runWeekdays: wd, level: $('gLevel').value });
@@ -1776,7 +1802,7 @@
   function pushPayload(sub) {
     const days = plan ? plan.days.filter(d => d.date >= addDays(today, -2) && d.date <= addDays(today, 21)).map(d => {
       const gymOnly = d.type === 'rest' && d.gym && !d.movedTo && !d.skipped;
-      return { d: d.date, t: gymOnly ? `Musculação ${d.gym}` : d.title + (d.second ? ` + ${TYPE_LABEL[d.second.type] || 'treino'}` : ''), x: gymOnly ? 'Sessão de musculação do plano. Toque para ver os exercícios.' : plain(d.rua), ty: gymOnly ? 'gym' : d.type, k: isHard(d) };
+      return { d: d.date, t: gymOnly ? `Musculação ${d.gym}` : d.title + (d.seconds || []).map(y => ` + ${TYPE_LABEL[y.type] || 'treino'}`).join(''), x: gymOnly ? 'Sessão de musculação do plano. Toque para ver os exercícios.' : plain(d.rua), ty: gymOnly ? 'gym' : d.type, k: isHard(d) };
     }) : [];
     const r = allRaces().find(x => x.date >= today);
     const race = r ? { d: r.date, n: r.id === 'plan' ? '' : r.name } : null;

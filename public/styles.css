@@ -193,7 +193,7 @@ main{padding:4px max(var(--gutter),env(safe-area-inset-right,0px)) 32px max(var(
 .strava-btn:focus-visible{outline:2px solid var(--c1);outline-offset:2px}
 .strava-link{color:#FC5200;font-weight:700;font-size:13px;text-decoration:underline}
 /* O selo oficial é preto: fica sobre fundo branco para aparecer no tema escuro, sem mudar o arquivo. */
-.pwr{display:block;height:12px;width:auto;margin-top:12px;background:#fff;padding:7px 10px;border-radius:8px;box-sizing:content-box}
+.pwr{display:block;height:12px;width:auto;margin-top:12px;background:#fff;padding:7px 10px;border-radius:8px;box-sizing:content-box;align-self:flex-start}
 .btn.danger{background:transparent;color:var(--bad);border-color:color-mix(in srgb,var(--bad) 35%,transparent)}
 .btn.danger:hover{background:var(--tint-red)}
 .btn.ghost.danger{background:transparent;color:var(--bad);border-color:color-mix(in srgb,var(--bad) 35%,transparent)}

@@ -581,6 +581,37 @@ body.noscroll{overflow:hidden}
 details.rpast{margin-top:14px}
 details.rpast summary{font-weight:600;color:var(--c1);padding:8px 0;list-style:none;display:inline-flex;align-items:center;gap:10px}
 details.rpast summary::-webkit-details-marker{display:none}
+/* Lista ou calendário */
+.rview{display:inline-flex;gap:2px;padding:3px;border-radius:var(--r-pill);background:var(--sunk);margin:14px 0 4px}
+.rview button{display:inline-flex;align-items:center;gap:6px;border:0;background:none;color:var(--muted);font:inherit;font-size:var(--fs-sm);font-weight:600;padding:7px 14px;border-radius:var(--r-pill);cursor:pointer;min-height:36px;transition:background var(--t-fast),color var(--t-fast)}
+.rview button svg,.rcal-nav svg,.rkit-ico svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.rview button[aria-pressed="true"]{background:var(--btn);color:var(--btn-fg)}
+.rcal-nav{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:14px 0 8px}
+.rcal-nav .round{width:38px;height:38px;background:var(--sunk)}
+.rcal-nav .round svg{width:18px;height:18px}
+.rcal-title{font-size:var(--fs-lg);font-weight:650;text-transform:lowercase}
+.rcal-title::first-letter{text-transform:uppercase}
+.rcal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;text-align:center}
+.rcal-wd{font-size:12px;font-weight:600;color:var(--faint);padding:4px 0}
+.rcal-d{position:relative;aspect-ratio:1;max-height:52px;width:100%;display:grid;place-items:center;border:1px solid transparent;border-radius:var(--r-sm);background:none;color:var(--fg2);font:inherit;font-size:15px;font-weight:550;font-variant-numeric:tabular-nums;cursor:pointer;transition:background var(--t-fast),border-color var(--t-fast)}
+.rcal-d:hover{background:var(--sunk)}
+.rcal-d.today{border-color:var(--line2);color:var(--fg);font-weight:700}
+.rcal-d.race{background:var(--btn);color:var(--btn-fg);font-weight:700}
+.rcal-d.race.past{background:var(--sunk);color:var(--muted)}
+.rcal-d.kit:not(.race){background:var(--tint-orange);color:var(--c2-text);font-weight:650}
+.rcal-d i{position:absolute;bottom:5px;left:50%;width:5px;height:5px;margin-left:-2.5px;border-radius:50%;background:var(--c2)}
+.rcal-d.sel{box-shadow:0 0 0 2px var(--card),0 0 0 4px var(--c1)}
+.rcal-leg{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:12px;font-size:var(--fs-cap);color:var(--muted)}
+.rcal-leg span{display:inline-flex;align-items:center;gap:6px}
+.lg{width:12px;height:12px;border-radius:4px;display:inline-block}
+.lg.race{background:var(--btn)} .lg.kit{background:var(--tint-orange);box-shadow:inset 0 0 0 2px var(--c2)} .lg.today{border:1px solid var(--line2)}
+.rcal-hint{margin-top:10px}
+.rcal-day{margin-top:6px;animation:pop .2s var(--ease)}
+.rcal-day .rmonth{margin-top:14px}
+.rkit{display:grid;grid-template-columns:48px 1fr auto;gap:14px;align-items:center;padding:12px 0;border-top:1px solid var(--line)}
+.rmonth+.rkit{border-top:0}
+.rkit-ico{width:48px;height:48px;border-radius:var(--r-md);background:var(--tint-orange);color:var(--c2-text);display:grid;place-items:center}
+.rkit-ico svg{width:22px;height:22px}
 
 /* ============ 9. Ajustes ============ */
 .brand-ico{width:32px;height:32px;border-radius:var(--r-sm);display:grid;place-items:center;font-weight:700;font-size:15px}

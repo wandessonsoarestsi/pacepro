@@ -198,6 +198,11 @@ main{padding:4px max(var(--gutter),env(safe-area-inset-right,0px)) 32px max(var(
 .msg{margin:0;font-size:var(--fs-sm);padding:12px 14px;border-radius:var(--r-md);background:var(--sunk);color:var(--fg2);line-height:1.45}
 .msg.bad{background:var(--tint-red);color:var(--bad)}
 .msg.good{background:var(--tint-teal);color:var(--c1)}
+.msg.flash{animation:msgIn .45s var(--ease)}
+@keyframes msgIn{0%{opacity:0;transform:translateY(6px)}60%{opacity:1;box-shadow:0 0 0 3px color-mix(in srgb,currentColor 25%,transparent)}100%{box-shadow:0 0 0 0 transparent}}
+.btn.busy,.btn.busy:hover{opacity:.85;cursor:progress;background:var(--c1)}
+.btn-spin{width:16px;height:16px;border-radius:50%;border:2px solid color-mix(in srgb,var(--c1-fg) 30%,transparent);border-top-color:var(--c1-fg);animation:spin .8s linear infinite;flex:none}
+@media (prefers-reduced-motion:reduce){.msg.flash,.btn-spin{animation:none}}
 .confirm{border:1px solid color-mix(in srgb,var(--bad) 35%,transparent);background:var(--tint-red);border-radius:var(--r-md);padding:14px;display:flex;flex-direction:column;gap:12px;animation:pop .2s var(--ease)}
 .confirm p{margin:0;font-size:var(--fs-sm);color:var(--fg2)}
 .confirm b{color:var(--bad);display:block;margin-bottom:2px;font-size:15px}

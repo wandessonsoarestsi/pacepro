@@ -1,6 +1,6 @@
 // Lembretes do dia: /api/push?a=cron, chamado uma vez por dia pelo Cron da Vercel (vercel.json, 10h UTC = 7h em Brasília).
 // Fica junto de /api/push para não passar do limite de 12 funções do plano grátis da Vercel.
-// Para cada aparelho inscrito: treino de hoje, contagem para a prova e treino-chave de ontem que ficou sem fazer.
+// Para cada aparelho inscrito: treino de hoje, contagem para a prova, retirada do kit e treino-chave de ontem que ficou sem fazer.
 // Cada aparelho recebe no máximo uma rodada por dia, mesmo se o cron rodar mais vezes.
 const { db, dbConf, baseUrl } = require('./_lib');
 const P = require('./_push');
@@ -18,7 +18,7 @@ function messages(rec, today, stravaAt) {
   const race = rec.race && rec.race.d >= today ? rec.race : null;
   const raceName = race && race.n ? race.n : 'a prova';
   const raceDay = (day && day.ty === 'race') || (race && race.d === today);
-  if (raceDay && (pr.treino !== false || pr.prova !== false)) out.push({ title: 'Dia de prova! 🏁', body: 'Boa prova! Confira os horários, o checklist e o ritmo km a km.', url: '/#hoje', tag: 'treino' });
+  if (raceDay && (pr.treino !== false || pr.prova !== false)) out.push({ title: 'Dia de prova!', body: 'Boa prova! Confira os horários, o checklist e o ritmo km a km.', url: '/#hoje', tag: 'treino' });
   else if (pr.treino !== false && day && day.ty !== 'rest') {
     out.push({ title: `Treino de hoje: ${day.t || 'corrida'}`, body: day.x || 'Toque para ver o treino completo.', url: '/#hoje', tag: 'treino' });
   }
@@ -31,6 +31,11 @@ function messages(rec, today, stravaAt) {
       url: '/#provas', tag: 'prova'
     });
   }
+  if (pr.kit !== false) (rec.kits || []).filter(k => k.d === today).forEach(k => out.push({
+    title: `Hoje é dia de retirar o kit${k.n ? ': ' + k.n : ''}`,
+    body: k.p ? `Local: ${k.p}. Confira no regulamento o horário e o que levar.` : 'Confira no regulamento o horário e o que levar.',
+    url: '/#provas', tag: 'kit'
+  }));
   if (pr.perdido !== false) {
     const y = addDays(today, -1), yd = days.find(d => d.d === y);
     const ranSince = stravaAt && isoLocal(new Date(stravaAt)) >= y;

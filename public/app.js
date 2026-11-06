@@ -186,9 +186,17 @@
 
   /* ---------- Ajustes do plano (treino remarcado, pulado ou aliviado) ---------- */
   // Atividades que não são corrida: natação, bike, mobilidade e outra escolhida pela pessoa.
-  const CROSS_T = ['swim', 'bike', 'mobility', 'cross'];
+  const CROSS_T = ['swim', 'bike', 'mobility', 'cross', 'hyrox', 'crossfit', 'brick', 'gym', 'event'];
   const isCross = t => CROSS_T.includes(t);
   const isRunType = t => !isCross(t) && t !== 'rest';
+  // Plano híbrido (várias modalidades): a prova principal pode não ser de corrida.
+  const hybridPlan = () => !!(plan && plan.sports && plan.sports.length);
+  const runEventPlan = () => !plan || !plan.event || plan.event === 'run';
+  const SPORT_LABEL = { run: 'Corrida', swim: 'Natação', bike: 'Bike', gym: 'Musculação', hyrox: 'Hyrox', crossfit: 'Crossfit', tri: 'Triatlo', mobility: 'Mobilidade', other: 'Outra' };
+  const EVENT_LABEL = { run: 'Prova de corrida', swim: 'Prova de natação', bike: 'Prova de bike', hyrox: 'Prova de Hyrox', crossfit: 'Competição de Crossfit', tri: 'Prova de triatlo', goal: 'Dia da meta' };
+  const eventLabel = () => EVENT_LABEL[plan && plan.event] || 'Prova';
+  const eventGoal = () => { const s = plan && plan.sports && plan.sports.find(x => x.event); return s ? s.goal : ''; };
+  const isTrainDay = x => !!x && (x.type !== 'rest' || !!x.gym || !!x.second);
   // Treino forte: intervalado, limiar, teste ou o longo do fim de semana.
   const isHard = d => !!d && (['interval', 'threshold', 'test'].includes(d.type) || (d.type === 'easy' && d.key && [0, 6].includes(D(d.date).getDay())));
   function applyAdjust() {
@@ -258,9 +266,54 @@
     });
     return out;
   }
+  /* ---------- Modalidades e metas (plano híbrido) ---------- */
+  // Em que modalidade conta cada tipo de sessão do plano.
+  const SPORT_OF = { swim: 'swim', bike: 'bike', hyrox: 'hyrox', crossfit: 'crossfit', mobility: 'mobility', cross: 'other', gym: 'gym', brick: 'brick' };
+  const sportOfType = t => SPORT_OF[t] || (isRunType(t) ? 'run' : null);
+  // Sessões de cada modalidade numa semana: quantas há e quantas já foram feitas (o dia marcado como feito conta para todas).
+  function sportTally(w) {
+    const t = {};
+    const add = (k, dt) => { if (!k) return; t[k] = t[k] || { n: 0, done: 0 }; t[k].n++; if (done[dt]) t[k].done++; };
+    w.days.forEach(x => {
+      if (x.type === 'event') add(plan.event, x.date);
+      else if (x.type !== 'rest' || x.gym) { if (x.type !== 'rest') add(sportOfType(x.type), x.date); }
+      if (x.gym && x.type !== 'gym') add('gym', x.date);
+      if (x.second) add(sportOfType(x.second.type), x.date);
+    });
+    const tri = ['swim', 'bike', 'run', 'brick'].reduce((a, k) => t[k] ? { n: a.n + t[k].n, done: a.done + t[k].done } : a, { n: 0, done: 0 });
+    if (tri.n) t.tri = tri;
+    return t;
+  }
+  function sportsHtml(compact) {
+    const cur = dayOf(today) || dayOf(selected);
+    const w = cur ? plan.weeks.find(x => x.n === cur.week) : (today < firstDay() ? plan.weeks[0] : null);
+    const tally = w ? sportTally(w) : {};
+    const rows = plan.sports.map(sp => {
+      const t = tally[sp.k] || { n: 0, done: 0 };
+      const ico = ICON[sp.k === 'run' ? 'run' : sp.k] || ICON.cross;
+      const cls = sp.k === 'run' ? 'run' : sp.k === 'gym' ? 'gym' : 'swim';
+      return `<div class="sp-row"><span class="ico ${cls}">${ico}</span><span class="sp-txt"><span class="t">${esc(sp.label)}${sp.focus ? ' <span class="chip key sm">Foco</span>' : ''}${sp.event ? ' <span class="chip sm">prova</span>' : ''}</span>` +
+        `<span class="s">${sp.goal ? 'Meta: ' + esc(sp.goal) : 'Sem meta definida'}</span></span>` +
+        (w ? `<span class="sp-n"><b>${t.done}/${t.n}</b><small>${t.n === 1 ? 'treino' : 'treinos'}</small></span>` : '') + `</div>`;
+    }).join('');
+    return `<div class="card-head"><div><span class="eyebrow">${w ? `Semana ${w.n}` : 'Ciclo'} · ${esc(eventLabel())} em ${ddmm(raceISO())}</span><h3>Modalidades e metas</h3></div></div>` +
+      `<div class="sports">${rows}</div>` +
+      (compact ? '<a class="linkbtn" href="#plano" data-goto="sportsCard">Ver a semana no Plano ›</a>' : '<button class="linkbtn" type="button" data-sports-edit>Mudar modalidades, foco ou metas ›</button>');
+  }
+  function renderSports() {
+    const on = hybridPlan();
+    ['sportsCard', 'sportsHome'].forEach(id => {
+      const box = $(id); if (!box) return;
+      box.hidden = !on; if (!on) { box.innerHTML = ''; return; }
+      box.innerHTML = sportsHtml(id === 'sportsHome');
+      bindGoto(box);
+      box.querySelectorAll('[data-sports-edit]').forEach(b => b.onclick = () => { fillGenFromPlan(); location.hash = 'ajustes'; openGen(true); });
+    });
+  }
+
   function renderActs() {
     const box = $('actsCard'); if (!box) return;
-    if (!plan) { box.hidden = true; return; }
+    if (!plan || hybridPlan()) { box.hidden = true; return; }
     const a = planActs();
     const ck = (id, on, label, k) => `<label for="${id}"><input id="${id}" type="checkbox"${k ? ` data-act="${k}"` : ''}${on ? ' checked' : ''}> ${label}</label>`;
     box.hidden = false;
@@ -580,7 +633,7 @@
     let html = '';
     for (let i = 0; i < 7; i++) {
       const dt = addDays(mon, i), x = dayAt(dt), off = dt < minDay() || dt > lastDay();
-      const kind = !x ? 'none' : isCross(x.type) ? 'swim' : x.type === 'rest' ? (x.gym ? 'gym' : 'rest') : x.type === 'race' ? 'race' : 'run';
+      const kind = !x ? 'none' : x.type === 'gym' ? 'gym' : x.type === 'event' ? 'race' : isCross(x.type) ? 'swim' : x.type === 'rest' ? (x.gym ? 'gym' : 'rest') : x.type === 'race' ? 'race' : 'run';
       const mark = done[dt] ? '<i class="mk done"></i>' : `<i class="mk ${kind}${x && x.key && kind === 'run' ? ' key' : ''}"></i>`;
       html += `<button type="button" role="tab" class="wd${dt === today ? ' today' : ''}" data-d="${dt}" aria-selected="${dt === selected}"${off ? ' disabled' : ''} aria-label="${WDL[D(dt).getDay()]} ${ddmm(dt)}${x ? ', ' + esc(x.title) : ''}${done[dt] ? ', feito' : ''}"><span class="wl">${LET[D(dt).getDay()]}</span><span class="wn">${D(dt).getDate()}</span>${mark}</button>`;
     }
@@ -602,11 +655,11 @@
     $('sDays').textContent = today > raceISO() ? 'Concluído' : ms <= 0 || raceISO() === today ? 'É hoje!' : days === 1 ? '1 dia' : `${days} dias`;
     const day = dayOf(selected);
     const wk = day ? plan.weeks.find(w => w.n === day.week) : null;
-    const keyDays = wk ? wk.days.filter(x => isRunType(x.type)) : [];
+    const keyDays = wk ? wk.days.filter(x => hybridPlan() ? isTrainDay(x) : isRunType(x.type)) : [];
     const nDone = keyDays.filter(x => done[x.date]).length;
     $('sWeek').textContent = keyDays.length ? `${nDone}/${keyDays.length}` : '–';
     const est = estimateAt(today);
-    const proj = est ? A.project(est.sec, today, raceISO()) : null;
+    const proj = est && runEventPlan() ? A.project(est.sec, today, raceISO()) : null;
     $('sProj').textContent = proj ? A.fmtTime(proj) : '–';
 
     // Ciclo: uma faixa por semana, com a semana atual preenchida até hoje
@@ -622,7 +675,7 @@
     $('sPills').innerHTML = keyDays.map(x => {
       const st = done[x.date] ? 'done' : x.date < today ? 'miss' : x.date === today ? 'today' : '';
       return `<span class="wp ${st}" title="${esc(x.title)}"><b>${WD[D(x.date).getDay()]}</b>${st === 'done' ? '✓' : st === 'miss' ? '–' : ''}</span>`;
-    }).join('') || '<small class="muted">Sem corridas nesta semana.</small>';
+    }).join('') || `<small class="muted">Sem ${hybridPlan() ? 'treinos' : 'corridas'} nesta semana.</small>`;
 
     // Projeção: régua de tempo, mais rápido à direita, com a meta marcada
     const goal = goalSec();
@@ -640,7 +693,7 @@
       const trend = pastProj ? pastProj - proj : 0;
       $('sProjSub').textContent = (gap <= 0 ? `dentro da meta (${A.fmtTime(-gap)} de folga)` : `faltam ${A.fmtTime(gap)} para a meta`) +
         (pastProj && Math.abs(trend) >= 5 ? ` · ${trend > 0 ? '−' : '+'}${A.fmtTime(Math.abs(trend))} em 2 semanas` : '');
-    } else { $('sGauge').hidden = true; $('sProjSub').textContent = 'aparece com as primeiras corridas'; }
+    } else { $('sGauge').hidden = true; $('sProjSub').textContent = !runEventPlan() ? `prova principal: ${eventLabel()}` : 'aparece com as primeiras corridas'; }
 
     renderStats(est, proj);
   }
@@ -660,15 +713,17 @@
     const f = Math.min(1, Math.max(0, (D(today) - D(start)) / (D(race) - D(start) || 1)));
     const big = left > 1 ? String(left) : left === 1 ? '1' : left === 0 ? 'Hoje' : '–';
     const unit = left > 1 ? 'dias para a prova' : left === 1 ? 'dia para a prova' : left === 0 ? 'é dia de prova' : 'prova concluída';
+    if (!runEventPlan()) proj = null;
     const goal = goalSec(), ok = proj && proj <= goal, diff = proj ? Math.abs(proj - goal) : 0;
     const gain = est && proj ? est.sec - proj : 0;
     box.innerHTML = `<div class="rh-top"><span class="eyebrow">${esc(planRaceLabel().replace(/^./, c => c.toUpperCase()))} · ${WD[D(race).getDay()]} ${ddmm(race)}</span></div>` +
       `<div class="rh-days"><b>${big}</b><span>${unit}</span></div>` +
       `<div class="rh-bar" role="progressbar" aria-label="Ciclo até a prova" aria-valuemin="0" aria-valuemax="${total}" aria-valuenow="${Math.max(0, total - Math.max(0, left))}"><i style="width:${(100 * f).toFixed(1)}%"></i></div>` +
       `<div class="rh-ends"><span>${today < start ? 'começa' : 'início'} ${ddmm(start)}</span><span>prova ${ddmm(race)}</span></div>` +
-      `<div class="rh-proj"><div><span class="lbl">Projeção no dia da prova</span><b class="${proj ? (ok ? 'good' : 'warn') : ''}">${proj ? A.fmtTime(proj) : '–'}</b></div>` +
+      (!runEventPlan() ? `<div class="rh-proj"><div><span class="lbl">Prova principal</span><b>${esc(eventLabel())}</b></div>${eventGoal() ? `<span class="chip good">${esc(eventGoal())}</span>` : ''}</div>` : '') +
+      (!runEventPlan() ? '' : `<div class="rh-proj"><div><span class="lbl">Projeção no dia da prova</span><b class="${proj ? (ok ? 'good' : 'warn') : ''}">${proj ? A.fmtTime(proj) : '–'}</b></div>` +
       `<span class="chip ${proj ? (ok ? 'good' : 'warn') : ''}">${proj ? (ok ? (diff >= 5 ? `${A.fmtTime(diff)} abaixo da meta` : 'na meta') : `${A.fmtTime(diff)} acima da meta`) : 'sem corridas'}</span></div>` +
-      `<p class="muted small rh-sub">Meta ${A.fmtTime(goal)} (${A.fmtPace(goal / distKm())}/km)${est && proj ? ` · hoje ${A.fmtTime(est.sec)}${gain > 0 ? `, ${A.fmtTime(gain)} a ganhar com o plano` : ''}` : ''}</p>`;
+      `<p class="muted small rh-sub">Meta ${A.fmtTime(goal)} (${A.fmtPace(goal / distKm())}/km)${est && proj ? ` · hoje ${A.fmtTime(est.sec)}${gain > 0 ? `, ${A.fmtTime(gain)} a ganhar com o plano` : ''}` : ''}</p>`);
   }
 
   /* ---------- Treino do dia ---------- */
@@ -686,8 +741,14 @@
       `<div class="tbl"><table><thead><tr>${head.map(h => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${g.rows.map(r => `<tr>${r.map(c => `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div></details>`;
   }
 
-  const TYPE_LABEL = { easy: 'Leve', threshold: 'Limiar', interval: 'Intervalado', test: 'Teste', race: 'Prova', swim: 'Natação', bike: 'Bike', mobility: 'Mobilidade', cross: 'Outra atividade', rest: 'Descanso' };
-  const CROSS_TIP = { swim: 'Técnica e respiração, sem séries fortes.', bike: 'Giro solto e leve: soma condicionamento sem o impacto da corrida.', mobility: 'Quadril, tornozelo e posterior de coxa, sem forçar e sem dor.', cross: 'Intensidade leve. O foco do plano é a corrida, então não chegue cansado no próximo treino.' };
+  const TYPE_LABEL = { easy: 'Leve', threshold: 'Limiar', interval: 'Intervalado', test: 'Teste', race: 'Prova', swim: 'Natação', bike: 'Bike', mobility: 'Mobilidade', cross: 'Outra atividade', rest: 'Descanso', hyrox: 'Hyrox', crossfit: 'Crossfit', brick: 'Transição bike + corrida', gym: 'Musculação', event: 'Prova principal' };
+  const CROSS_TIP = { swim: 'Técnica e respiração, sem séries fortes.', bike: 'Giro solto e leve: soma condicionamento sem o impacto da corrida.', mobility: 'Quadril, tornozelo e posterior de coxa, sem forçar e sem dor.', cross: 'Intensidade leve. O foco do plano é a corrida, então não chegue cansado no próximo treino.',
+    hyrox: 'Na prova são 8 × (1 km + estação). Treine a corrida cansada e as transições rápidas; carga que dê para manter a técnica.',
+    crossfit: 'Técnica antes de carga. Escale o WOD (carga ou repetições) para terminar com boa execução.',
+    brick: 'Troque da bike para a corrida rápido, como na prova. As pernas pesam nos primeiros minutos; isso é o treino.',
+    event: 'Dia de prova: aqueça bem, comece abaixo do seu limite e acelere no fim.' };
+  // Dica do 2º treino ou de sessões do plano híbrido (ali o foco não é só a corrida).
+  const tipFor = t => (hybridPlan() && t === 'swim') ? 'Siga as séries do dia. Nos dias leves, foco em técnica e respiração.' : (hybridPlan() && t === 'bike') ? 'Cadência entre 85 e 95. Nos treinos fortes, siga os tempos do dia; nos leves, giro solto.' : (hybridPlan() && t === 'cross') ? 'Siga a intensidade do dia sem chegar esgotado no próximo treino.' : CROSS_TIP[t] || '';
   const TIP = {
     easy: 'FC até ~145. Passou disso, caminhe até baixar e volte a trotar.',
     threshold: 'FC entre 150 e 165, ritmo constante. Se for quebrar, reduza 10–15 s/km em vez de parar.',
@@ -711,7 +772,8 @@
     if (!day) { el.innerHTML = `<p class="muted">Sem treino planejado para este dia.</p>`; $('analysis').hidden = true; return; }
     const st = done[day.date];
     const isRun = isRunType(day.type);
-    let html = `<div class="wk-top"><div><span class="eyebrow">${day.recovery ? `Recuperação · dia ${day.recovery} de 7` : esc(TYPE_LABEL[day.type])}${day.key && isRun ? ' · treino-chave' : ''}</span><h3>${esc(day.title)}</h3></div>` +
+    const also = day.second ? ` + ${TYPE_LABEL[day.second.type] || 'treino'}` : day.gym && day.type !== 'gym' && hybridPlan() ? ' + Musculação' : '';
+    let html = `<div class="wk-top"><div><span class="eyebrow">${day.recovery ? `Recuperação · dia ${day.recovery} de 7` : esc(TYPE_LABEL[day.type] + also)}${day.key && isRun ? ' · treino-chave' : ''}</span><h3>${esc(day.title)}</h3></div>` +
       (st ? `<span class="chip good">${CHECK}Feito</span>` : '') + `</div>`;
     if (isRun) {
       const hero = [];
@@ -726,8 +788,14 @@
         `<p class="note">${TIP[day.type] || ''} Aquecimento 10' leve e desaquecimento 5–10'.</p></div>`;
       if (!st && day.date >= addDays(today, -1)) html += wxBlock(day);
     }
-    if (isCross(day.type)) html += `<div class="blk swim"><span class="k">${esc(TYPE_LABEL[day.type])}</span><b>${esc(day.title)}</b><p class="note">${CROSS_TIP[day.type]}</p></div>`;
-    if (day.gym) html += gymBlock(day.gym, day, !isRun && !isCross(day.type));
+    // Sessão que não é corrida: título, o treino completo (quando é mais que o título) e uma dica.
+    const sessBlk = (t, title, rua, k) => {
+      const det = noEmoji(rua || '').trim();
+      return `<div class="blk ${t === 'event' ? 'race' : 'swim'}"><span class="k">${esc(k)}</span><b>${esc(title)}</b>${det && det !== title ? `<p class="note">${esc(det)}</p>` : ''}${tipFor(t) ? `<p class="note">${esc(tipFor(t))}</p>` : ''}</div>`;
+    };
+    if (isCross(day.type) && day.type !== 'gym') html += sessBlk(day.type, day.title, day.rua, TYPE_LABEL[day.type]);
+    if (day.gym) html += gymBlock(day.gym, day, (!isRun && !isCross(day.type)) || day.type === 'gym');
+    if (day.second) html += sessBlk(day.second.type, day.second.title, day.second.rua, `2º treino · ${TYPE_LABEL[day.second.type] || 'Treino'}`);
     if (day.type === 'rest' && !day.gym) html += `<p class="muted">${esc(day.rua && !/^descanso$/i.test(day.rua) ? noEmoji(day.rua) : 'Descanso total. Sono, água e boa comida.')}</p>`;
     const adj = day.movedFrom ? `Treino de ${WD[D(day.movedFrom).getDay()]} ${ddmm(day.movedFrom)} remarcado para hoje.` : day.movedTo ? '' : day.skipped ? '' : day.softened ? `Era "${day.softened}". Trocado por leve para recuperar.` : '';
     if (day.movedFrom || day.movedTo || day.skipped || day.softened) html += `<div class="blk adj"><span class="k">Plano ajustado</span>${adj ? `<p class="note">${esc(adj)}</p>` : ''}<button class="linkbtn" id="undoAdj" type="button">Desfazer ajuste</button></div>`;
@@ -1100,8 +1168,14 @@
     rest: '<svg viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>',
     bike: '<svg viewBox="0 0 24 24"><circle cx="6" cy="16" r="3.5"/><circle cx="18" cy="16" r="3.5"/><path d="M6 16l4-7h5l3 7M10 9l2 7h-2M14 5h2"/></svg>',
     mobility: '<svg viewBox="0 0 24 24"><circle cx="12" cy="4.5" r="1.8"/><path d="M4 9h16M12 9v5l-4 6M12 14l4 6"/></svg>',
-    cross: '<svg viewBox="0 0 24 24"><path d="M12 3l2.5 5.5L20 9.5l-4 4 1 5.5-5-2.8L7 19l1-5.5-4-4 5.5-1z"/></svg>'
+    cross: '<svg viewBox="0 0 24 24"><path d="M12 3l2.5 5.5L20 9.5l-4 4 1 5.5-5-2.8L7 19l1-5.5-4-4 5.5-1z"/></svg>',
+    gym: '<svg viewBox="0 0 24 24"><path d="M6.5 7v10M3.5 9.5v5M17.5 7v10M20.5 9.5v5M6.5 12h11"/></svg>',
+    hyrox: '<svg viewBox="0 0 24 24"><path d="M3 18h13l4-4M5 18v-6h8l3 6M8 12V8.5h3"/></svg>',
+    crossfit: '<svg viewBox="0 0 24 24"><circle cx="12" cy="15" r="5"/><path d="M9 10.7V8a3 3 0 0 1 6 0v2.7"/></svg>',
+    brick: '<svg viewBox="0 0 24 24"><path d="M3 12h12M11 8l4 4-4 4M20 5v14"/></svg>',
+    event: '<svg viewBox="0 0 24 24"><circle cx="12" cy="15" r="5"/><path d="M8.6 11.3 6 3h4l2 5 2-5h4l-2.6 8.3"/></svg>'
   };
+  ICON.tri = ICON.event; ICON.other = ICON.cross;
   function renderPrePlan() {
     const box = $('prePlan');
     if (!plan || today >= firstDay()) { box.hidden = true; return; }
@@ -1115,9 +1189,10 @@
   function renderPlan() {
     renderPrePlan();
     renderActs();
+    renderSports();
     const d = dayOf(selected), cur = dayOf(today);
     if (planWeek == null) planWeek = d ? d.week : plan.weeks[0].n;
-    const counted = x => isRunType(x.type);
+    const counted = x => hybridPlan() ? isTrainDay(x) : isRunType(x.type);
     $('weekPills').innerHTML = plan.weeks.map(w => {
       const k = w.days.filter(counted), all = k.length && k.every(x => done[x.date]);
       return `<button type="button" role="tab" data-w="${w.n}" aria-selected="${w.n === planWeek}" class="${cur && cur.week === w.n ? 'now' : ''}">SEM ${w.n}${all ? ' ✓' : ''}</button>`;
@@ -1130,9 +1205,10 @@
       (k.length ? `<div class="pbar"><i style="width:${Math.round(100 * nDone / k.length)}%"></i></div>` : '') +
       (w.note ? `<p class="muted small">${esc(w.note)}</p>` : '');
     $('weekDays').innerHTML = w.days.map(x => {
-      const dt = D(x.date); const kind = isCross(x.type) ? 'swim' : x.type === 'rest' ? 'rest' : 'run';
-      const right = done[x.date] ? `<span class="done">${CHECK}</span>` : x.gym ? `<span class="chip">${esc(x.gym)}</span>` : '';
-      return `<button type="button" class="lrow ${x.date === today ? 'today' : ''}" data-d="${x.date}"><span class="ico ${x.key && kind === 'run' ? 'key' : kind}">${ICON[x.type] || ICON[kind]}</span><span style="min-width:0"><span class="t">${esc(x.title)}</span><span class="s">${x.date === today ? 'hoje' : WD[dt.getDay()] + ' ' + ddmm(x.date)} · ${esc(TYPE_LABEL[x.type])}${x.key && kind === 'run' ? ' · chave' : ''}</span></span>${right}<span class="chev" aria-hidden="true">›</span></button>`;
+      const dt = D(x.date); const kind = x.type === 'gym' ? 'gym' : isCross(x.type) ? 'swim' : x.type === 'rest' ? (x.gym ? 'gym' : 'rest') : 'run';
+      const right = done[x.date] ? `<span class="done">${CHECK}</span>` : x.gym && x.type !== 'gym' ? `<span class="chip">${esc(x.gym)}</span>` : '';
+      const plus = x.second ? ` · + ${esc(x.second.title)}` : x.gym && x.type !== 'gym' && hybridPlan() ? ` · + musculação ${esc(x.gym)}` : '';
+      return `<button type="button" class="lrow ${x.date === today ? 'today' : ''}" data-d="${x.date}"><span class="ico ${x.key && kind === 'run' ? 'key' : kind}">${ICON[x.type] || ICON[kind]}</span><span style="min-width:0"><span class="t">${esc(x.title)}</span><span class="s">${x.date === today ? 'hoje' : WD[dt.getDay()] + ' ' + ddmm(x.date)} · ${esc(TYPE_LABEL[x.type])}${x.key && kind === 'run' ? ' · chave' : ''}${plus}</span></span>${right}<span class="chev" aria-hidden="true">›</span></button>`;
     }).join('');
     document.querySelectorAll('#weekDays .lrow').forEach(b => b.onclick = () => { selected = b.dataset.d; location.hash = 'hoje'; renderAll(); window.scrollTo(0, 0); });
   }
@@ -1264,18 +1340,69 @@
   const genDays = () => [...document.querySelectorAll('#gDays [data-wd]:checked')].map(b => +b.dataset.wd);
   // Aceita 30:00, 1:59:00, 30.00 ou só 30 (minutos).
   const toSec = s => { const t = String(s || '').trim().replace(/[.,h]/g, ':'); if (/^\d{1,3}$/.test(t)) return +t * 60 || null; const p = t.split(':').map(Number); if (p.some(isNaN) || p.length < 2 || p.length > 3) return null; return p.length === 3 ? p[0] * 3600 + p[1] * 60 + p[2] : p[0] * 60 + p[1]; };
+  /* ---------- Modalidades no gerador ---------- */
+  const GOAL_HINT = { run: 'ex.: 15 km em 1 mês', swim: 'ex.: nadar 1,5 km sem parar', bike: 'ex.: pedal de 100 km', gym: 'ex.: agachar 100 kg', hyrox: 'ex.: sub 2h na prova', crossfit: 'ex.: primeiro muscle-up', tri: 'ex.: primeiro triatlo sprint', mobility: 'ex.: tocar o chão', other: 'ex.: 2 aulas por semana' };
+  const EVENT_OK = ['run', 'tri', 'hyrox', 'swim', 'bike', 'crossfit'];
+  // Estado do formulário: { on: [chaves], focus: {k: true}, goal: {k: texto}, event }. Fica salvo neste aparelho.
+  let genSp = store.get('pacepro.genSports', null) || { on: ['run'], focus: { run: true }, goal: {}, event: 'run' };
+  const saveGenSp = () => store.set('pacepro.genSports', genSp);
+  const genOn = () => [...document.querySelectorAll('#gSports [data-sport]:checked')].map(b => b.dataset.sport).concat($('gOther').value.trim() ? ['other'] : []);
+  const genLabel = k => k === 'other' ? ($('gOther').value.trim() || 'Outra') : SPORT_LABEL[k];
+  function renderGenSports() {
+    const on = genOn();
+    genSp.on = on.filter(k => k !== 'other');
+    const box = $('gGoals');
+    box.innerHTML = on.map(k => `<div class="sg-row"><span class="ico ${k === 'run' ? 'run' : k === 'gym' ? 'gym' : 'swim'}" aria-hidden="true">${ICON[k] || ICON.cross}</span><b>${esc(genLabel(k))}</b>` +
+      `<button type="button" class="focus-tg" data-focus="${k}" aria-pressed="${!!genSp.focus[k]}">Foco</button>` +
+      `<input type="text" maxlength="80" data-goal="${k}" placeholder="${esc(GOAL_HINT[k] || 'Meta (opcional)')}" value="${esc(genSp.goal[k] || '')}" aria-label="Meta de ${esc(genLabel(k))}"></div>`).join('') ||
+      '<small class="muted">Escolha pelo menos uma modalidade.</small>';
+    box.querySelectorAll('[data-focus]').forEach(b => b.onclick = () => { const k = b.dataset.focus; genSp.focus[k] = !genSp.focus[k]; saveGenSp(); renderGenSports(); });
+    box.querySelectorAll('[data-goal]').forEach(i => i.oninput = () => { genSp.goal[i.dataset.goal] = i.value; saveGenSp(); });
+    // Prova principal: só modalidades com prova; a escolhida antes continua se ainda estiver marcada.
+    const evs = on.filter(k => EVENT_OK.includes(k));
+    if (!evs.includes(genSp.event)) genSp.event = evs.find(k => genSp.focus[k]) || evs[0] || 'goal';
+    $('gEvent').innerHTML = evs.map(k => `<option value="${k}"${genSp.event === k ? ' selected' : ''}>${esc(EVENT_LABEL[k])}</option>`).join('') + `<option value="goal"${genSp.event === 'goal' ? ' selected' : ''}>Sem prova: só as metas, até a data</option>`;
+    const runEv = genSp.event === 'run';
+    document.querySelectorAll('#genForm [data-run-event]').forEach(el => { el.hidden = !runEv; });
+    document.querySelectorAll('#genForm [data-run]').forEach(el => { el.hidden = !on.some(k => ['run', 'tri', 'hyrox'].includes(k)); });
+    $('gRace').parentElement.firstChild.textContent = genSp.event === 'goal' ? 'Data da meta' : 'Data da prova';
+    saveGenSp();
+  }
+  // Plano de corrida (prova cadastrada, próximo objetivo): garante corrida marcada e como prova principal.
+  function genForRun() {
+    const c = document.querySelector('#gSports [data-sport="run"]'); if (c) c.checked = true;
+    genSp.event = 'run'; renderGenSports();
+  }
+  // "Mudar modalidades": o formulário volta com o que está no plano atual.
+  function fillGenFromPlan() {
+    if (!hybridPlan()) return;
+    const ks = plan.sports.map(x => x.k);
+    document.querySelectorAll('#gSports [data-sport]').forEach(b => { b.checked = ks.includes(b.dataset.sport); });
+    const o = plan.sports.find(x => x.k === 'other'); $('gOther').value = o ? o.label : '';
+    genSp.focus = {}; genSp.goal = {};
+    plan.sports.forEach(x => { if (x.focus) genSp.focus[x.k] = true; if (x.goal) genSp.goal[x.k] = x.goal; });
+    genSp.event = plan.event || 'run';
+    $('gRace').value = raceISO();
+    if (plan.event === 'run' && plan.goalSec) { $('gDist').value = nearDist(distKm()); $('gGoal').value = A.fmtTime(goalSec()); }
+    renderGenSports();
+  }
   (function initGen() {
     const f = $('genForm'); if (!f) return;
+    document.querySelectorAll('#gSports [data-sport]').forEach(b => { b.checked = genSp.on.includes(b.dataset.sport); b.onchange = renderGenSports; });
+    $('gOther').oninput = renderGenSports;
+    $('gEvent').onchange = () => { genSp.event = $('gEvent').value; renderGenSports(); };
+    renderGenSports();
     $('gStart').value = addDays(today, 1);
     // Dias de corrida: lembrados neste aparelho para o próximo plano.
     const saved = store.get('pacepro.genDays', null);
     if (Array.isArray(saved) && saved.length) document.querySelectorAll('#gDays [data-wd]').forEach(b => { b.checked = saved.includes(+b.dataset.wd); });
     const dayHint = () => {
       const n = genDays().length;
-      $('gDaysHint').textContent = n < 2 ? 'Escolha pelo menos 2 dias.' : n > 6 ? 'Deixe pelo menos 1 dia de descanso.' : `${n} corridas por semana. O longão fica no fim de semana quando der; os treinos fortes ficam separados.`;
+      $('gDaysHint').textContent = n < 2 ? 'Escolha pelo menos 2 dias.' : n > 6 ? 'Deixe pelo menos 1 dia de descanso.' : genOn().length > 1 ? `${n} dias de treino. O app distribui as modalidades nesses dias, com até 2 treinos por dia e os fortes separados.` : `${n} corridas por semana. O longão fica no fim de semana quando der; os treinos fortes ficam separados.`;
     };
     document.querySelectorAll('#gDays [data-wd]').forEach(b => b.onchange = () => { store.set('pacepro.genDays', genDays()); dayHint(); });
     dayHint();
+    $('gSports').addEventListener('change', dayHint); $('gOther').addEventListener('input', dayHint);
     // Retorno visual: o botão mostra "Gerando…" e depois a mensagem (erro ou sucesso) é trazida para a tela.
     const btn = $('gBtn'), btnTxt = btn.textContent;
     let btnTimer = null;
@@ -1296,20 +1423,27 @@
     const genSubmit = () => {
       const fail = t => { msg.className = 'msg bad'; msg.textContent = t; return false; };
       const msg = $('genMsg'); msg.hidden = false; $('genActions').hidden = true;
+      const on = genOn(), hybrid = on.length > 1 || (on.length === 1 && on[0] !== 'run'), runEv = !hybrid || genSp.event === 'run';
+      if (!on.length) return fail('Escolha pelo menos uma modalidade.');
       let goalSec = toSec($('gGoal').value); const race = $('gRace').value, start = $('gStart').value;
       // "2:27" numa meia maratona é 2h27, não 2 min 27 s: se o ritmo ficar impossível (abaixo de 2'30"/km), lê como horas e minutos.
       if (goalSec && goalSec / +$('gDist').value < 150 && $('gGoal').value.trim().split(/[:.,h]/).length === 2) goalSec *= 60;
-      if (!race || !start) return fail('Preencha a data da prova e o início do plano.');
-      if (race <= start) return fail('A prova precisa ser depois do início do plano.');
+      const what = genSp.event === 'goal' ? 'meta' : 'prova';
+      if (!race || !start) return fail(`Preencha a data da ${what} e o início do plano.`);
+      if (race <= start) return fail(`A ${what} precisa ser depois do início do plano.`);
       if ((D(race) - D(start)) / 864e5 > 168) return fail('Escolha um período de até 24 semanas.');
-      if (!goalSec) return fail('Escreva o tempo-objetivo como 30:00 ou 1:55:00.');
+      if (runEv && !goalSec) return fail('Escreva o tempo-objetivo como 30:00 ou 1:55:00.');
       const wd = genDays();
-      if (wd.length < 2 || wd.length > 6) return fail('Escolha de 2 a 6 dias de corrida na semana.');
+      if (wd.length < 2 || wd.length > 6) return fail(`Escolha de 2 a 6 dias de ${hybrid ? 'treino' : 'corrida'} na semana.`);
       let cur = toSec($('gCur').value);
       if ($('gCur').value.trim() && !cur) return fail('Escreva o tempo atual nos 5 km como 42:30.');
       if (!cur) { const est = estimateAt(today); cur = est ? est.sec * (5 / distKm()) : null; }
       try {
-        const md = window.PlanGenerator.generate({ start, race, distanceKm: +$('gDist').value, goalSec, currentSec5k: cur, runWeekdays: genDays(), cross: [...document.querySelectorAll('[data-cross]:checked')].map(b => b.dataset.cross).concat($('gOther').value.trim() ? [{ name: $('gOther').value.trim() }] : []), gym: $('gGym').checked, level: $('gLevel').value });
+        // Só corrida: plano de corrida como antes. Com outras modalidades: plano híbrido com a semana inteira.
+        const sports = on.map(k => ({ k, focus: !!genSp.focus[k], goal: (genSp.goal[k] || '').trim(), name: k === 'other' ? $('gOther').value.trim() : '' }));
+        const md = window.PlanGenerator.generate(hybrid
+          ? { start, race, distanceKm: runEv ? +$('gDist').value : 5, goalSec: runEv ? goalSec : null, currentSec5k: cur, trainWeekdays: wd, sports, event: genSp.event, level: $('gLevel').value }
+          : { start, race, distanceKm: +$('gDist').value, goalSec, currentSec5k: cur, runWeekdays: wd, level: $('gLevel').value });
         const p = P.parse(md);
         if (!p.days.length) throw new Error('Não consegui montar o plano com esses dados.');
         // O plano novo entra em uso na hora (antes ficava esperando o botão "Usar este plano" e o plano antigo seguia na tela).
@@ -1319,7 +1453,7 @@
         resetPlanExtras();
         setPlanMd(md, 'gerado no app'); track('plano-gerado');
         msg.className = 'msg good';
-        msg.textContent = `Plano novo em uso: ${p.weeks.length} semanas até ${ddmm(p.race)}.${cur ? '' : ' Sem corridas registradas, usei uma estimativa a partir da meta; informe seu tempo atual para ajustar.'}`;
+        msg.textContent = `Plano novo em uso: ${p.weeks.length} semanas até ${ddmm(p.race)}.${cur || !on.some(k => ['run', 'tri', 'hyrox'].includes(k)) ? '' : ' Sem corridas registradas, usei uma estimativa a partir da meta; informe seu tempo atual para ajustar.'}`;
         const a = $('gDownload'); if (a.dataset.url) URL.revokeObjectURL(a.dataset.url);
         a.dataset.url = URL.createObjectURL(new Blob([md], { type: 'text/markdown' })); a.href = a.dataset.url;
         $('gUndo').hidden = !prevPlan.md;
@@ -1533,6 +1667,7 @@
   const raceDays = () => Math.ceil((D(raceISO()) - D(today)) / 864e5);
   function renderRace() {
     const box = $('raceCard'); if (!plan) { box.innerHTML = ''; return; }
+    box.hidden = !runEventPlan(); if (box.hidden) return;
     const r = racePlan(), dist = distKm();
     const show = dist > 10 ? r.rows.filter(x => x.km % 5 === 0 || x.km === r.rows.length) : r.rows;
     const sec = planSection(/estrat[ée]gia de prova/i);
@@ -1641,7 +1776,7 @@
   function pushPayload(sub) {
     const days = plan ? plan.days.filter(d => d.date >= addDays(today, -2) && d.date <= addDays(today, 21)).map(d => {
       const gymOnly = d.type === 'rest' && d.gym && !d.movedTo && !d.skipped;
-      return { d: d.date, t: gymOnly ? `Musculação ${d.gym}` : d.title, x: gymOnly ? 'Sessão de musculação do plano. Toque para ver os exercícios.' : plain(d.rua), ty: gymOnly ? 'gym' : d.type, k: isHard(d) };
+      return { d: d.date, t: gymOnly ? `Musculação ${d.gym}` : d.title + (d.second ? ` + ${TYPE_LABEL[d.second.type] || 'treino'}` : ''), x: gymOnly ? 'Sessão de musculação do plano. Toque para ver os exercícios.' : plain(d.rua), ty: gymOnly ? 'gym' : d.type, k: isHard(d) };
     }) : [];
     const r = allRaces().find(x => x.date >= today);
     const race = r ? { d: r.date, n: r.id === 'plan' ? '' : r.name } : null;
@@ -2280,6 +2415,7 @@
     if (rmLock) { rmLock.release().catch(() => {}); rmLock = null; }
   }
   function raceDayBlock(day) {
+    if (!runEventPlan()) return '';
     const dist = day.date === raceISO();
     if (dist) return `<div class="blk race"><span class="k">Horários de hoje · largada ${raceCfg().start}</span>${timelineHtml()}<button class="btn wide big" id="rmOpen" type="button">Abrir tela da prova</button><p class="note">Mostra o ritmo de cada km e se você está na frente ou atrás. Toque a cada placa de km.</p></div>`;
     if (day.date === addDays(raceISO(), -1)) return `<div class="blk race"><span class="k">Véspera da prova</span>${raceChecksHtml('Véspera')}<p class="note">Largada amanhã às ${raceCfg().start}. Ajuste o horário no cartão Plano de prova.</p></div>`;
@@ -2332,6 +2468,7 @@
       if (!dt || !toSec(g)) { m.hidden = false; m.className = 'msg bad'; m.textContent = 'Escolha a data da prova e escreva o tempo-objetivo, como 55:00 ou 1:59:00.'; return; }
       const start = recEnd() >= today ? addDays(recEnd(), 1) : addDays(today, 1);
       if ((D(dt) - D(start)) / 864e5 < 21) { m.hidden = false; m.className = 'msg bad'; m.textContent = `Escolha uma prova a partir de ${ddmm(addDays(start, 21))}, para ter pelo menos 3 semanas de plano depois da recuperação.`; return; }
+      genForRun();
       $('gDist').value = d; $('gGoal').value = g; $('gRace').value = dt; $('gStart').value = start;
       if (res && dist === 5 && !$('gCur').value) $('gCur').value = A.fmtTime(res);
       location.hash = 'ajustes'; openGen(true);
@@ -2392,7 +2529,7 @@
   const nearDist = d => ['5', '10', '21.1', '42.2'].reduce((b, x) => Math.abs(+x - d) < Math.abs(+b - d) ? x : b, '5');
   function allRaces() {
     const list = (extra.races || []).map(r => ({ ...r }));
-    if (plan && plan.race && extra.hidePlanRace !== plan.race && !list.some(r => r.date === plan.race)) list.push({ id: 'plan', name: 'Prova do plano atual', date: plan.race, dist: distKm(), goal: A.fmtTime(goalSec()), status: 'inscrito', plan: true });
+    if (plan && plan.race && extra.hidePlanRace !== plan.race && !list.some(r => r.date === plan.race)) list.push(runEventPlan() ? { id: 'plan', name: 'Prova do plano atual', date: plan.race, dist: distKm(), goal: A.fmtTime(goalSec()), status: 'inscrito', plan: true } : { id: 'plan', name: `${eventLabel()} (plano atual)`, date: plan.race, dist: null, goal: eventGoal(), status: 'inscrito', plan: true });
     list.forEach(r => { if (plan && r.date === plan.race) r.plan = true; });
     return list.sort((a, b) => a.date.localeCompare(b.date));
   }
@@ -2400,6 +2537,7 @@
   function planRaceLabel() {
     const r = (extra.races || []).find(x => x.date === raceISO() && x.name);
     if (r) return r.name;
+    if (!runEventPlan()) return plan.event === 'goal' ? 'o dia da meta' : `a ${eventLabel().toLowerCase().replace('hyrox', 'Hyrox').replace('crossfit', 'Crossfit')}`;
     const next = allRaces().find(x => x.date >= today);
     return next && next.date === raceISO() ? 'a próxima prova' : `a prova de ${kmTxt(distKm())}`;
   }
@@ -2410,6 +2548,7 @@
   // Monta o plano para uma prova: preenche o gerador e já gera.
   function prefillGen(dist, goal, date) {
     const afterRec = plan && date > raceISO() && today <= recEnd() ? addDays(recEnd(), 1) : addDays(today, 1);
+    genForRun();
     $('gDist').value = nearDist(+dist); $('gGoal').value = goal || ''; $('gRace').value = date; $('gStart').value = afterRec;
     const res = raceResult(); if (res && distKm() === 5 && !$('gCur').value) $('gCur').value = A.fmtTime(res);
     location.hash = 'ajustes'; openGen(true);
@@ -2428,7 +2567,7 @@
   function raceRow(r) {
     const dd = D(r.date), n = Math.round((dd - D(today)) / 864e5), past = r.date < today, res = past || n === 0 ? raceResultAt(r.date) : null;
     const when = n === 0 ? 'hoje' : n === 1 ? 'amanhã' : n > 0 ? (n < 60 ? `em ${n} dias` : `em ${Math.round(n / 7)} semanas`) : '';
-    const sub = [kmTxt(r.dist), r.goal ? `meta ${r.goal}` : '', r.place].filter(Boolean).map(esc).join(' · ');
+    const sub = [r.dist ? kmTxt(r.dist) : '', r.goal ? `meta ${r.goal}` : '', r.place].filter(Boolean).map(esc).join(' · ');
     const chip = res ? `<span class="chip ${r.goal && toSec(r.goal) && res <= toSec(r.goal) ? 'good' : ''}">${A.fmtTime(res)}</span>` : past ? '<span class="chip">sem resultado</span>' : `<span class="chip ${r.plan ? 'key' : r.status === 'inscrito' ? 'good' : ''}">${r.plan ? 'no plano' : r.status === 'inscrito' ? 'inscrito' : 'pretendo'}</span>`;
     const open = raceOpen === r.id;
     const kit = r.kitDate && !past ? `<span class="s kit">Kit: ${r.kitDate === today ? 'hoje' : `${WD[D(r.kitDate).getDay()]} ${ddmm(r.kitDate)}`}${r.kitPlace ? ' · ' + esc(r.kitPlace) : ''}</span>` : '';
@@ -2742,7 +2881,7 @@
     // Numera só os passos visíveis.
     const steps = [...li.parentElement.children].filter(x => !x.hidden);
     steps.forEach((x, i) => { const n = x.querySelector('.n'); if (n) n.textContent = String(i + 1); });
-    $('wTitle').textContent = `Seu plano de corrida em ${steps.length} passos`;
+    $('wTitle').textContent = `Seu plano de treino em ${steps.length} passos`;
     if (standalone) return;
     const d = deviceInfo();
     $('wInstallWho').textContent = `Abre em tela cheia, funciona sem internet e recebe notificações. Detectamos: ${d.os} · ${BROWSER_NAME[d.browser]}.`;

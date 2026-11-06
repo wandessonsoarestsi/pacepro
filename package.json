@@ -2,6 +2,11 @@
   "name": "pacepro",
   "private": true,
   "version": "1.0.0",
-  "description": "Plano de treino de corrida gerado por algoritmo, com análise dos treinos do Strava",
-  "engines": { "node": ">=18" }
+  "description": "Plano de treino híbrido (corrida, natação, bike, musculação, Hyrox, Crossfit, triatlo) gerado por algoritmo, com análise dos treinos do Strava",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node tests/plano.test.js"
+  }
 }

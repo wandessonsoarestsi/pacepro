@@ -1,6 +1,6 @@
 # PacePro
 
-Plano de corrida pessoal: treino do dia detalhado, contagem regressiva, tempo estimado para a prova
+Plano de treino pessoal para corrida e treino híbrido: treino do dia detalhado, contagem regressiva, tempo estimado para a prova
 e análise de cada treino com os dados do Strava. Modo claro e escuro. Os dados ficam no aparelho e,
 se a pessoa entrar com o Google, também na nuvem (Redis da Upstash), para não perder nada e usar em
 outro aparelho. A conexão com o Strava fica num cookie criptografado do navegador.
@@ -9,6 +9,8 @@ outro aparelho. A conexão com o Strava fica num cookie criptografado do navegad
 
 - Treino do dia, plano completo, contagem regressiva e estimativa de tempo.
 - Gerador de plano com atividades opcionais além da corrida: musculação, natação, bike, mobilidade ou outra escrita pela pessoa.
+- Treino híbrido: escolha quantas modalidades quiser (corrida, natação, bike, musculação, Hyrox, Crossfit, triatlo, mobilidade ou outra), marque as de foco e escreva uma meta para cada uma (ex.: 15 km em 1 mês, sub 2h no Hyrox, primeiro triatlo). O app monta a semana inteira nos dias de treino escolhidos, com até 2 treinos por dia, treinos fortes em dias separados, fases (base, construção, específica, semana leve) e polimento para a prova principal, que pode ser de qualquer modalidade. Se não couber tudo nos dias escolhidos, as complementares saem primeiro e o plano avisa.
+- Cartão "Modalidades e metas" no Início e no Plano: foco, meta e quantos treinos de cada modalidade já foram feitos na semana.
 - No plano atual (inclusive importado), a aba Plano permite trocar as atividades além da corrida de hoje em diante, sem mexer nas corridas.
 - Análise automática: ao abrir o app, as corridas do Strava dos últimos 7 dias são ligadas aos dias do plano e analisadas. Ao abrir um dia mais antigo, o treino é analisado de novo.
 - Como foi o treino: esforço (1 a 10), dor e sono. Sinais de cansaço sugerem trocar o próximo treino forte por leve.
@@ -34,7 +36,7 @@ outro aparelho. A conexão com o Strava fica num cookie criptografado do navegad
 ## Estrutura
 
 - `public/` — o site (HTML, CSS e JS, sem build).
-  - `plan-generator.js` — gera planos por algoritmo (método VDOT de Jack Daniels).
+  - `plan-generator.js` — gera planos por algoritmo (corrida pelo método VDOT de Jack Daniels; demais modalidades por fases e regras de carga).
   - `plan-parser.js` — lê planos em Markdown (gerados ou importados).
   - `analysis.js` — análise dos treinos e estimativa de tempo.
   - `plano.md` — plano de exemplo.
@@ -111,3 +113,10 @@ O app segue o [acordo](https://www.strava.com/legal/api) e a [política da API d
   - Negrito na data marca treino-chave; o texto em negrito da corrida vira o título do treino.
   - O ritmo-alvo é o primeiro `m'ss"/km` da coluna de corrida. `🏁` marca teste e `🏆` marca a prova.
 - Sessões de musculação em títulos `### 💪 A — Nome` seguidos de uma tabela.
+- Plano híbrido: linha `**Prova principal:**` com a modalidade, seção `## Modalidades e metas` (tabela Modalidade | Prioridade | Meta | Por semana)
+  e tabelas `Data | Treino principal | Esteira | 2º treino`. A 4ª coluna traz a letra da musculação ou o 2º treino do dia.
+  Prova que não é de corrida usa `🏅` e `**Objetivo:**` no lugar de `**Meta:**`.
+
+## Testes
+
+`npm test` roda os testes do gerador e do leitor de planos (`tests/plano.test.js`).

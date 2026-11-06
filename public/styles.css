@@ -175,6 +175,13 @@ main{padding:4px max(var(--gutter),env(safe-area-inset-right,0px)) 32px max(var(
 .btn.ghost:hover{background:var(--sunk)}
 .btn.strava{background:#FC5200;color:#fff}
 .btn.strava:hover{background:#E04800}
+/* Marca do Strava: botão e selo oficiais, sem alterar (guia de marca do Strava). */
+.strava-btn{display:inline-block;padding:0;border:0;background:none;cursor:pointer;line-height:0;border-radius:6px}
+.strava-btn img{display:block;height:48px;width:auto}
+.strava-btn[disabled]{opacity:.6;cursor:default}
+.strava-btn:focus-visible{outline:2px solid var(--c1);outline-offset:2px}
+.strava-link{color:#FC5200;font-weight:700;font-size:13px;text-decoration:underline}
+.pwr{display:block;height:12px;width:auto;margin-top:12px}
 .btn.danger{background:transparent;color:var(--bad);border-color:color-mix(in srgb,var(--bad) 35%,transparent)}
 .btn.danger:hover{background:var(--tint-red)}
 .btn.ghost.danger{background:transparent;color:var(--bad);border-color:color-mix(in srgb,var(--bad) 35%,transparent)}

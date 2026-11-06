@@ -50,7 +50,7 @@
         <p class="muted">Tudo fica salvo neste celular. Se quiser, entre com o Google para guardar na nuvem e não perder nada.</p>
         <p class="small" id="wAcct" hidden>Já usa o PacePro em outro aparelho? <button class="linkbtn" type="button" data-google-login>Entrar com Google</button> para trazer seus dados.</p>
         <ol class="steps">
-          <li id="wStrava"><span class="n">1</span><div><b>Conecte o Strava</b><small class="muted">Opcional. Seus treinos são analisados sozinhos e o app calcula seu nível atual.</small><div class="row-actions"><button class="btn strava" type="button" data-strava-connect>Conectar com Strava</button></div></div></li>
+          <li id="wStrava"><span class="n">1</span><div><b>Conecte o Strava</b><small class="muted">Opcional. Seus treinos são analisados sozinhos e o app calcula seu nível atual.</small><div class="row-actions"><button class="strava-btn" type="button" data-strava-connect aria-label="Connect with Strava"><img src="/strava/connect-with-strava.svg" alt="Connect with Strava" width="193" height="48"></button></div></div></li>
           <li><span class="n">2</span><div><b>Cadastre sua próxima prova</b><small class="muted">Data, distância e meta. O app monta o plano até o dia da prova.</small><div class="row-actions"><button class="btn" type="button" id="wRace">Cadastrar minha prova</button></div></div></li>
         </ol>
         <p class="small muted">Só quer ver como funciona? <button class="linkbtn" type="button" data-example>Abrir o plano de exemplo</button></p>
@@ -187,13 +187,15 @@
       </div>
 
       <div class="card" id="stravaCard">
-        <div class="card-head"><div class="hgroup"><span class="brand-ico strava-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M10 3l-6 12h3.6L10 10.2 12.4 15H16zM16 15l-1.8 3.6L12.4 15H9.8l4.4 8.6 4.4-8.6z"/></svg></span><h2>Strava</h2></div><span class="chip" id="stravaChip">–</span></div>
+        <div class="card-head"><h2>Strava</h2><span class="chip" id="stravaChip">–</span></div>
         <p class="muted small" id="stravaText">Conecte para puxar seus treinos e atualizar a estimativa.</p>
         <div class="row-actions">
-          <button class="btn strava" id="stravaConnect" type="button" data-strava-connect>Conectar com Strava</button>
+          <button class="strava-btn" id="stravaConnect" type="button" data-strava-connect aria-label="Connect with Strava"><img src="/strava/connect-with-strava.svg" alt="Connect with Strava" width="193" height="48"></button>
           <button class="btn ghost" id="stravaSync" type="button" hidden>Sincronizar agora</button>
           <button class="btn ghost" id="stravaOut" type="button" hidden>Desconectar</button>
         </div>
+        <p class="muted small">Os dados que vêm do Strava ficam só neste aparelho, por até 7 dias, e o app busca de novo quando precisa. Eles não vão para a nuvem nem para o backup. Ao desconectar, tudo que veio do Strava é apagado.</p>
+        <img class="pwr" src="/strava/powered-by-strava.svg" alt="Powered by Strava" width="118" height="12">
       </div>
 
       <div class="card" id="planCard">

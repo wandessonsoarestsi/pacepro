@@ -10,7 +10,7 @@ outro aparelho. A conexão com o Strava fica num cookie criptografado do navegad
 - Treino do dia, plano completo, contagem regressiva e estimativa de tempo.
 - Gerador de plano com atividades opcionais além da corrida: musculação, natação, bike, mobilidade ou outra escrita pela pessoa.
 - No plano atual (inclusive importado), a aba Plano permite trocar as atividades além da corrida de hoje em diante, sem mexer nas corridas.
-- Análise automática: ao abrir o app, as corridas do Strava dos últimos 7 dias são ligadas aos dias do plano e analisadas.
+- Análise automática: ao abrir o app, as corridas do Strava dos últimos 7 dias são ligadas aos dias do plano e analisadas. Ao abrir um dia mais antigo, o treino é analisado de novo.
 - Como foi o treino: esforço (1 a 10), dor e sono. Sinais de cansaço sugerem trocar o próximo treino forte por leve.
 - Ajuste do plano: treino-chave que ficou sem fazer pode ser passado para outro dia da semana ou pulado (tudo pode ser desfeito).
 - Zonas de FC (do plano, da FC máxima informada ou da maior FC dos treinos) e tempo em cada zona.
@@ -61,6 +61,33 @@ Isso cria sozinho as variáveis `KV_REST_API_URL` e `KV_REST_API_TOKEN`.
    - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
    - `SESSION_SECRET` — texto aleatório com 32 caracteres ou mais
 2. Faça **Redeploy**.
+
+### 5. Webhook do Strava (recomendado)
+Com o webhook, o Strava avisa quando há atividade nova, e o app só consulta o Strava nessa hora.
+Sem ele, o app consulta no máximo a cada 15 minutos. Precisa do banco de dados (passo 3).
+1. Na Vercel, crie a variável `STRAVA_VERIFY_TOKEN` com um texto aleatório e faça **Redeploy**.
+2. Rode uma vez, trocando os valores:
+   ```
+   curl -X POST https://www.strava.com/api/v3/push_subscriptions \
+     -F client_id=SEU_CLIENT_ID -F client_secret=SEU_CLIENT_SECRET \
+     -F callback_url=https://pacepro.vercel.app/api/strava/webhook \
+     -F verify_token=O_MESMO_STRAVA_VERIFY_TOKEN
+   ```
+3. A resposta traz um `id`. Crie a variável `STRAVA_SUBSCRIPTION_ID` com esse número e faça **Redeploy**.
+   Assim o app ignora avisos que não vêm da sua inscrição.
+
+## Regras do Strava
+
+O app segue o [acordo](https://www.strava.com/legal/api) e a [política da API do Strava](https://www.strava.com/legal/api_policy):
+- O plano é gerado por algoritmo (VDOT), sem IA. Nenhum dado do Strava vai para modelos de IA.
+- Os dados do Strava ficam só no aparelho, por até 7 dias (item 6.2). Depois disso o app apaga e busca de novo quando precisa.
+- Nada do Strava vai para a nuvem nem para o backup. Fica só o que a pessoa marca ou digita.
+- O que a pessoa apaga no Strava some do app na próxima sincronização (item 6.3).
+- Ao desconectar, o acesso é revogado e tudo que veio do Strava é apagado do aparelho (item 7.4).
+- Botão "Connect with Strava", selo "Powered by Strava" e links "View on Strava" seguem o
+  [guia de marca](https://developers.strava.com/guidelines) (arquivos oficiais em `public/strava/`).
+- Para limpar dados do Strava salvos na nuvem por versões antigas, rode uma vez
+  `KV_REST_API_URL=... KV_REST_API_TOKEN=... node scripts/limpar-strava-nuvem.js`.
 
 ## Formato do plano (.md)
 

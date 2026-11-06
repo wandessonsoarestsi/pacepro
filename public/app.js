@@ -54,6 +54,63 @@
   let selected = today;
   let busy = false;
 
+  /* ---------- Regras do Strava: nada do Strava fica guardado por mais de 7 dias ---------- */
+  // Política da API do Strava, item 6.2: os dados do Strava só podem ficar no cache por até 7 dias.
+  // Por isso tudo que vem do Strava leva a hora em que chegou e sai do aparelho depois de 7 dias
+  // (o app busca de novo quando precisa). Para a nuvem e o backup não vai nada do Strava.
+  // O que a pessoa marca ou digita (treino feito, esforço, dor, sono, tempos) é dela e fica.
+  const STRAVA_TTL = 7 * 864e5;
+  // Selo pedido pelo guia de marca do Strava onde aparecem dados vindos de lá.
+  const PWR = '<img class="pwr" src="/strava/powered-by-strava.svg" alt="Powered by Strava" width="118" height="12">';
+  const STRAVA_FIELDS = ['activityId', 'name', 'analysis', 'auto'];
+  const isFresh = at => !!at && Date.now() - at < STRAVA_TTL;
+  // sx: o dia tinha análise do Strava que já saiu do aparelho (dá para analisar de novo).
+  const stripDay = v => { const o = { ...v }; STRAVA_FIELDS.forEach(k => delete o[k]); if (v.activityId) o.sx = 1; return o; };
+  // Cópia de "done" sem nada do Strava (para a nuvem e o backup).
+  const doneNoStrava = d => { const o = {}; Object.entries(d || {}).forEach(([k, v]) => { o[k] = v && typeof v === 'object' && k[0] !== '_' ? stripDay(v) : v; }); return o; };
+  // Volta para "done" as análises do Strava ainda válidas que estavam neste aparelho.
+  function keepLocalStrava(next, prev) {
+    Object.entries(prev || {}).forEach(([k, v]) => {
+      if (k[0] === '_' || !v || !v.activityId || !isFresh(v.at) || !next[k]) return;
+      const o = { ...next[k] }; STRAVA_FIELDS.forEach(f => { if (v[f] !== undefined) o[f] = v[f]; }); delete o.sx;
+      next[k] = o;
+    });
+    return next;
+  }
+  // Tira do aparelho o que veio do Strava há mais de 7 dias (ou tudo, com all = true, ao desconectar).
+  // Devolve true se algo saiu.
+  function purgeStrava(all) {
+    let changed = false;
+    Object.keys(done).forEach(k => {
+      const v = done[k];
+      if (k[0] !== '_' && v && v.activityId && (all || !isFresh(v.at))) { done[k] = stripDay(v); changed = true; }
+    });
+    const keepRuns = all ? [] : runs.filter(r => isFresh(r.at));
+    if (keepRuns.length !== runs.length) { runs = keepRuns; changed = true; }
+    store.set(userKey('runs'), runs);
+    if (all) store.del(userKey('synced'));
+    const streams = store.get('pp.streams', {}), sNext = {};
+    Object.entries(streams).forEach(([id, s]) => { if (!all && s && isFresh(s._at)) sNext[id] = s; });
+    store.set('pp.streams', sNext);
+    const fix = store.get('pp.polyfix2', {}), fNext = {};
+    Object.entries(fix).forEach(([id, v]) => { if (!all && Array.isArray(v) && isFresh(v[1])) fNext[id] = v; });
+    store.set('pp.polyfix2', fNext);
+    store.del('pp.polyfix'); // formato antigo, sem data
+    // Cópias antigas que podem ter dados do Strava.
+    const bl = store.get(userKey('beforeLogin'), null);
+    if (bl && bl.done) store.set(userKey('beforeLogin'), { ...bl, done: doneNoStrava(bl.done) });
+    const legacy = store.get('sub30.done', null);
+    if (legacy) store.set('sub30.done', doneNoStrava(legacy));
+    return changed;
+  }
+  // Salva a limpeza sem contar como mudança nova (a nuvem já não tem dados do Strava).
+  function purgeAndSave(all) {
+    if (!purgeStrava(all)) return false;
+    const row = store.get(userKey('state'), null);
+    store.set(userKey('state'), { plan_md: planMd, done, extra, updated_at: (row && row.updated_at) || new Date().toISOString() });
+    return true;
+  }
+
   // Um resumo curto de cada km para o vídeo: ritmo, FC e terreno comparados com o km anterior.
   function kmAnalysis(s, Z, reps) {
     const total = s.d[s.n - 1], out = [];
@@ -243,8 +300,12 @@
     extra = { ...defaultExtra(), ...((row && row.extra) || {}) };
     applyPlanMd(row && row.plan_md, 'salvo');
     runs = store.get(userKey('runs'), []);
+    // Corridas guardadas antes da regra dos 7 dias não têm data de chegada: valem a da última sincronização.
+    const syncedAt = store.get(userKey('synced'), null);
+    runs.forEach(r => { if (!r.at) r.at = syncedAt || 0; });
     // Primeira visita: mostra as boas-vindas em vez do plano de exemplo.
     if (!row) { extra.fresh = true; saveNow(); }
+    purgeAndSave(false);
   }
 
   /* ---------- Conta (login com Google): guarda os dados na nuvem ---------- */
@@ -257,9 +318,8 @@
   const hasLocalData = row => !!(row && (row.plan_md || Object.keys(row.done || {}).length || (row.extra && ((row.extra.races || []).length || Object.keys(row.extra.weights || {}).length))));
   function acctPayload() {
     const row = localRow() || { plan_md: planMd, done, extra, updated_at: new Date().toISOString() };
-    const data = { app: 'pacepro', v: 2, plan_md: row.plan_md, done: row.done, extra: row.extra, runs };
-    // Sem os desenhos dos percursos se ficar grande demais (eles voltam ao sincronizar com o Strava).
-    if (JSON.stringify(data).length > 3.5e6) data.runs = runs.map(r => ({ ...r, poly: null }));
+    // Nada do Strava vai para a nuvem (regra dos 7 dias): só o plano e o que a pessoa marcou ou digitou.
+    const data = { app: 'pacepro', v: 3, plan_md: row.plan_md, done: doneNoStrava(row.done), extra: row.extra };
     return { data, updated_at: row.updated_at };
   }
   async function acctApi(path, opts) {
@@ -299,8 +359,7 @@
     if (!j.user) { acct.user = null; return false; }
     if (!j.data) return false;
     const d = j.data;
-    done = d.done || {}; extra = { ...defaultExtra(), ...(d.extra || {}) }; extra.fresh = false;
-    if (Array.isArray(d.runs) && (!strava.connected || !runs.length)) { runs = d.runs; store.set(userKey('runs'), runs); }
+    done = keepLocalStrava(doneNoStrava(d.done), done); extra = { ...defaultExtra(), ...(d.extra || {}) }; extra.fresh = false;
     applyPlanMd(d.plan_md || null, 'salvo');
     planWeek = null; if (plan) clampSelected();
     clearTimeout(saveTimer); saveTimer = null;
@@ -323,7 +382,7 @@
         if (!server) { setSyncMeta({ sub: j.user.sub, at: null, dirty: true }); await acctPush(); showToast('Conta ligada. Seus dados agora ficam guardados na nuvem.'); }
         else if (local && local > server) { setSyncMeta({ sub: j.user.sub, at: server, dirty: true }); await acctPush(); showToast('Conta ligada. Os dados deste aparelho (mais novos) foram para a nuvem.'); }
         else {
-          if (local) store.set(userKey('beforeLogin'), row); // guarda a versão deste aparelho, por segurança
+          if (local) store.set(userKey('beforeLogin'), { ...row, done: doneNoStrava(row.done) }); // guarda a versão deste aparelho, por segurança
           await acctPull(); showToast('Dados da sua conta carregados.');
         }
       } else if (server && server !== m.at && !(m.dirty && row && row.updated_at > server)) {
@@ -443,17 +502,38 @@
     return j;
   }
   async function checkStrava() {
-    try { const s = await api('/api/strava/status'); strava = { ...s, checked: true }; }
+    try {
+      const s = await api('/api/strava/status'); strava = { ...s, checked: true };
+      // Sem conexão (a pessoa desconectou, aqui ou no próprio Strava): apaga o que veio do Strava.
+      if (!s.connected) purgeAndSave(true);
+    }
     catch (e) { strava = { connected: false, configured: false, athlete: null, checked: true, error: e.message }; }
   }
-  async function syncRuns() {
+  // Busca as corridas dos últimos 90 dias (uma consulta ao Strava) e troca as guardadas.
+  // Com o webhook do Strava ligado, só busca quando há atividade nova, mudada ou apagada, ou para
+  // renovar o cache antes dos 7 dias. Sem webhook, no máximo a cada 15 minutos. force: sempre busca.
+  async function syncRuns(force) {
     if (!strava.connected) return;
-    const after = Math.floor(D(addDays(today, -90)).getTime() / 1000);
-    const list = await api(`/api/strava/activities?after=${after}`);
+    const last = store.get(userKey('synced'), 0) || 0, hook = strava.hook || {}, age = Date.now() - last;
+    const need = force || !last || age > 6 * 864e5 || (hook.on ? (hook.t || 0) > last : age > 15 * 60 * 1000);
+    if (!need) return;
+    const fromDay = addDays(today, -90), at = Date.now();
+    // Sem "after": o Strava devolve das mais novas para as mais antigas (com "after", começaria pelas antigas).
+    const j = await api('/api/strava/activities');
     const pf = polyFix();
-    runs = list.map(a => ({ id: 's' + a.id, stravaId: a.id, date: a.start.slice(0, 10), name: a.name, km: a.distance / 1000, sec: a.moving_time, hr: a.average_heartrate ? Math.round(a.average_heartrate) : null, poly: a.poly || pf[a.id] || null, trainer: !!a.trainer }));
+    runs = j.list.filter(a => a.start.slice(0, 10) >= fromDay).map(a => ({ id: 's' + a.id, stravaId: a.id, date: a.start.slice(0, 10), name: a.name, km: a.distance / 1000, sec: a.moving_time, hr: a.average_heartrate ? Math.round(a.average_heartrate) : null, poly: a.poly || pf[a.id] || null, trainer: !!a.trainer, at }));
+    // O que foi apagado no Strava (ou deixou de ser corrida) sai daqui também (item 6.3 da política).
+    const ids = new Set(runs.map(r => String(r.stravaId))), from = j.from && j.from > fromDay ? j.from : fromDay;
+    let gone = false;
+    Object.keys(done).forEach(k => { const v = done[k]; if (k[0] !== '_' && v && v.activityId && k >= from && !ids.has(String(v.activityId))) { done[k] = stripDay(v); gone = true; } });
+    const streams = store.get('pp.streams', {}), sNext = {};
+    Object.entries(streams).forEach(([id, s]) => { if (ids.has(id)) sNext[id] = s; });
+    store.set('pp.streams', sNext); Object.keys(streamMem).forEach(id => { if (!ids.has(id)) delete streamMem[id]; });
+    const fNext = {}; Object.entries(store.get('pp.polyfix2', {})).forEach(([id, v]) => { if (ids.has(id)) fNext[id] = v; });
+    store.set('pp.polyfix2', fNext);
+    if (gone) purgeAndSave(false) || saveNow((store.get(userKey('state'), {}) || {}).updated_at);
     store.set(userKey('runs'), runs);
-    store.set(userKey('synced'), Date.now());
+    store.set(userKey('synced'), at);
   }
 
   /* ---------- Topo e navegação ---------- */
@@ -667,7 +747,7 @@
     const isRun = isRunType(day.type);
     if (!isRun) { done[day.date] = { at: Date.now() }; persist(); renderAll(); return; }
     if (!strava.connected) {
-      $('finishArea').innerHTML = `<p class="msg">Conecte o Strava para puxar os dados desse treino.</p><div class="row-actions"><button class="btn strava" type="button" data-strava-connect>Conectar com Strava</button><button class="btn ghost" id="noData" type="button">Marcar sem dados</button></div>`;
+      $('finishArea').innerHTML = `<p class="msg">Conecte o Strava para puxar os dados desse treino.</p><div class="row-actions"><button class="strava-btn" type="button" data-strava-connect aria-label="Connect with Strava"><img src="/strava/connect-with-strava.svg" alt="Connect with Strava" width="193" height="48"></button><button class="btn ghost" id="noData" type="button">Marcar sem dados</button></div>`;
       $('noData').onclick = () => { done[day.date] = { at: Date.now() }; persist(); renderAll(); };
       bindStravaButtons();
       return;
@@ -676,7 +756,7 @@
     try {
       const after = Math.floor(D(addDays(day.date, -1)).getTime() / 1000);
       const before = Math.floor(D(addDays(day.date, 1)).getTime() / 1000);
-      const list = (await api(`/api/strava/activities?after=${after}&before=${before}`)).filter(a => a.start.slice(0, 10) === day.date);
+      const list = (await api(`/api/strava/activities?after=${after}&before=${before}`)).list.filter(a => a.start.slice(0, 10) === day.date);
       busy = false;
       if (!list.length) {
         $('finishArea').innerHTML = `<p class="msg">Não achei corrida no Strava em ${ddmm(day.date)}. Sincronize o relógio com o Strava e tente de novo.</p><div class="row-actions"><button class="btn" id="retry" type="button">Tentar de novo</button><button class="btn ghost" id="noData" type="button">Marcar sem dados</button></div>`;
@@ -697,6 +777,20 @@
     }
   }
 
+  // A análise do Strava sai do aparelho depois de 7 dias. Ao abrir de novo esse dia, analisa outra vez.
+  const reTried = new Set();
+  async function reanalyze(day) {
+    if (!strava.connected || busy || reTried.has(day.date) || !isRunType(day.type)) return;
+    const r = runs.filter(x => x.date === day.date).sort((a, b) => b.km - a.km)[0];
+    if (!r) return;
+    reTried.add(day.date);
+    try {
+      const act = await api(`/api/strava/activity?id=${encodeURIComponent(r.stravaId)}`);
+      const o = { ...(done[day.date] || {}), at: Date.now(), activityId: act.id, name: act.name, analysis: A.analyze(act, day, { goalSec: goalSec(), distanceKm: distKm() }) };
+      delete o.sx; done[day.date] = o;
+      persist(); renderAll();
+    } catch (e) {}
+  }
   async function analyzeOne(day, id) {
     busy = true; say('Analisando o treino…');
     try {
@@ -705,7 +799,7 @@
       done[day.date] = { at: Date.now(), activityId: act.id, name: act.name, analysis: an };
       maybeSetTest(day, an);
       persist();
-      try { await syncRuns(); } catch (e) {}
+      try { await syncRuns(true); } catch (e) {}
       busy = false; renderAll(); track('treino-analisado');
     } catch (e) { busy = false; say(esc(e.message), 'bad'); }
   }
@@ -713,7 +807,7 @@
   function renderAnalysis(day) {
     const box = $('analysis');
     const st = day && done[day.date];
-    if (!st || !st.analysis) { box.hidden = true; return; }
+    if (!st || !st.analysis) { box.hidden = true; if (st && st.sx) reanalyze(day); return; }
     const a = st.analysis, m = a.metrics;
     const tone = a.status === 'ok' ? 'good' : a.status;
     const label = a.status === 'ok' ? 'No alvo' : a.status === 'warn' ? 'Atenção' : 'Abaixo';
@@ -723,7 +817,7 @@
       `<div class="metrics"><div class="metric"><span>Distância</span><b>${m.distKm.toFixed(2).replace('.', ',')}</b></div><div class="metric"><span>Tempo</span><b>${A.fmtTime(m.time)}</b></div><div class="metric"><span>Ritmo</span><b>${m.pace ? A.fmtPace(m.pace) : '–'}</b></div><div class="metric"><span>FC</span><b>${m.hr || '–'}</b></div></div>` +
       (st.activityId ? '<div id="rmapSlot"></div>' : '') + bars + (() => { const Z = hrZones(); const zb = Z ? zoneBar(zoneTimes(a.splits, Z)) : ''; return zb ? `<div><span class="eyebrow">Tempo por zona de FC</span>${zb}</div>` : ''; })() + `<ul class="points">${a.points.map(p => `<li class="${p.tone}">${esc(p.txt)}</li>`).join('')}</ul>` + compareHtml(day.date) +
       (a.estimateSec ? `<p class="msg good">Este treino indica ${A.fmtTime(a.estimateSec)} nos ${distKm()} km (${esc(a.estimateBasis)}). A estimativa foi atualizada.</p>` : '') +
-      `<div class="row-actions between"><button class="btn ghost sm" id="shareW" type="button">Compartilhar</button>${st.activityId ? `<a class="muted small" href="https://www.strava.com/activities/${encodeURIComponent(st.activityId)}" target="_blank" rel="noopener">Ver no Strava ↗</a>` : ''}</div>`;
+      `<div class="row-actions between"><button class="btn ghost sm" id="shareW" type="button">Compartilhar</button>${st.activityId ? `<a class="strava-link" href="https://www.strava.com/activities/${encodeURIComponent(st.activityId)}" target="_blank" rel="noopener">View on Strava</a>` : ''}</div>` + (st.activityId ? PWR : '');
     box.hidden = false;
     $('shareW').onclick = () => shareWorkout(day);
     if (st.activityId) mountRouteMap('card', $('rmapSlot'), st.activityId, day);
@@ -745,10 +839,11 @@
     id = String(id);
     if (streamMem[id]) return streamMem[id];
     const all = store.get('pp.streams', {});
-    if (all[id]) return (streamMem[id] = all[id]);
+    if (all[id] && isFresh(all[id]._at)) return (streamMem[id] = all[id]);
     const s = await api(`/api/strava/streams?id=${encodeURIComponent(id)}`);
+    s._at = Date.now(); // regra dos 7 dias
     streamMem[id] = s;
-    try { const keep = Object.keys(all).slice(-5); const next = {}; keep.forEach(k => next[k] = all[k]); next[id] = s; store.set('pp.streams', next); } catch (e) {}
+    try { const keep = Object.keys(all).filter(k => k !== id && all[k] && isFresh(all[k]._at)).slice(-5); const next = {}; keep.forEach(k => next[k] = all[k]); next[id] = s; store.set('pp.streams', next); } catch (e) {}
     return s;
   }
   // Corrida anterior no mesmo percurso (pelas miniaturas do Strava).
@@ -818,7 +913,7 @@
     sh.querySelector('.rs-body').innerHTML = `<div class="card"><div class="card-head"><div><span class="eyebrow">${WDL[dt.getDay()]}, ${dt.getDate()} de ${MON[dt.getMonth()]}${r.trainer ? ' · esteira' : ''}</span><h3>${esc(inPlan ? pd.title : r.name)}</h3>${inPlan && pd.title !== r.name ? `<small class="muted">${esc(r.name)}</small>` : ''}</div>${chip}</div>` +
       `<div class="metrics"><div class="metric"><span>Distância</span><b>${r.km.toFixed(2).replace('.', ',')}</b></div><div class="metric"><span>Tempo</span><b>${A.fmtTime(r.sec)}</b></div><div class="metric"><span>Ritmo</span><b>${A.fmtPace(r.sec / r.km)}</b></div><div class="metric"><span>FC</span><b>${r.hr || '–'}</b></div></div>` +
       `<div id="rsMap"></div>` +
-      `<div class="row-actions between">${inPlan && r.date >= minDay() && r.date <= lastDay() ? '<button class="btn ghost sm" id="rsDay" type="button">Ver o treino do dia</button>' : '<span></span>'}<a class="muted small" href="https://www.strava.com/activities/${encodeURIComponent(sid)}" target="_blank" rel="noopener">Ver no Strava ↗</a></div></div>`;
+      `<div class="row-actions between">${inPlan && r.date >= minDay() && r.date <= lastDay() ? '<button class="btn ghost sm" id="rsDay" type="button">Ver o treino do dia</button>' : '<span></span>'}<a class="strava-link" href="https://www.strava.com/activities/${encodeURIComponent(sid)}" target="_blank" rel="noopener">View on Strava</a></div>${PWR}</div>`;
     if (sh.hidden) { sh.hidden = false; document.body.classList.add('noscroll'); try { history.pushState({ runSheet: 1 }, ''); } catch (e) {} }
     sh.querySelector('.rs-body').scrollTop = 0;
     const b = $('rsDay'); if (b) b.onclick = () => { closeRunSheet(); selected = r.date; location.hash = 'hoje'; renderAll(); setTimeout(() => { const w = $('analysis').hidden ? $('workout') : $('analysis'); w.scrollIntoView({ block: 'start', behavior: 'smooth' }); }, 80); };
@@ -1097,8 +1192,9 @@
     if (t === 'system') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme', t);
     renderSettings();
   });
-  $('stravaSync').onclick = async () => { $('stravaSync').disabled = true; await syncAndAnalyze(false); $('stravaSync').disabled = false; renderAll(); };
-  $('stravaOut').onclick = async () => { try { await api('/api/strava/logout', { method: 'POST' }); } catch (e) {} strava.connected = false; runs = []; store.set(userKey('runs'), runs); renderAll(); };
+  $('stravaSync').onclick = async () => { $('stravaSync').disabled = true; await syncAndAnalyze(false, true); $('stravaSync').disabled = false; renderAll(); };
+  // Desconectar: revoga o acesso no Strava e apaga deste aparelho tudo que veio de lá.
+  $('stravaOut').onclick = async () => { try { await api('/api/strava/logout', { method: 'POST' }); } catch (e) {} strava.connected = false; purgeAndSave(true); renderAll(); showToast('Strava desconectado. Os dados do Strava foram apagados deste aparelho.'); };
   $('mdFile').onchange = async e => {
     const file = e.target.files[0]; if (!file) return;
     const msg = $('planMsg'); msg.hidden = false;
@@ -1319,10 +1415,12 @@
     return n;
   }
   let lastAuto = 0;
-  async function syncAndAnalyze(quiet) {
+  async function syncAndAnalyze(quiet, force) {
     if (!strava.connected) return;
+    // Ao voltar para o app, confere de novo a conexão e se o webhook avisou de atividade nova.
+    if (lastAuto) { await checkStrava(); if (!strava.connected) { renderAll(); return; } }
     lastAuto = Date.now();
-    try { await syncRuns(); } catch (e) { return; }
+    try { await syncRuns(force); } catch (e) { return; }
     const n = await autoAnalyze();
     renderAll();
     if (n) showToast(n === 1 ? '1 treino analisado automaticamente pelo Strava.' : `${n} treinos analisados automaticamente pelo Strava.`);
@@ -2177,7 +2275,8 @@
   }
   // Alguns relógios (ex.: Zepp) mandam a corrida ao Strava sem o percurso resumido. Nesses casos o
   // percurso vem dos dados ponto a ponto e fica guardado no aparelho ('' = corrida sem GPS).
-  const polyFix = () => store.get('pp.polyfix', {});
+  // pp.polyfix2 = { id: [percurso, hora em que chegou] }; vale 7 dias, como o resto do Strava.
+  const polyFix = () => { const o = {}; Object.entries(store.get('pp.polyfix2', {})).forEach(([id, v]) => { if (Array.isArray(v) && isFresh(v[1])) o[id] = v[0]; }); return o; };
   function encodePoly(pts) {
     let out = '', pa = 0, pb = 0;
     const enc = v => { v = v < 0 ? ~(v << 1) : v << 1; let t = ''; while (v >= 0x20) { t += String.fromCharCode((0x20 | (v & 0x1f)) + 63); v >>= 5; } return t + String.fromCharCode(v + 63); };
@@ -2187,7 +2286,7 @@
   let polyBusy = false;
   async function fillMissingPolys(list) {
     if (polyBusy || !strava.connected) return;
-    const fix = polyFix(), miss = list.filter(r => r.stravaId && !r.poly && !r.trainer && fix[r.stravaId] === undefined);
+    const fix = polyFix(), fixAt = store.get('pp.polyfix2', {}), miss = list.filter(r => r.stravaId && !r.poly && !r.trainer && fix[r.stravaId] === undefined);
     if (!miss.length) return;
     polyBusy = true; let changed = false;
     for (const r of miss) {
@@ -2195,19 +2294,19 @@
         const s = await getStreams(r.stravaId);
         let poly = '';
         if (s && s.n > 1) { const step = Math.max(1, Math.floor(s.n / 120)), pts = []; for (let i = 0; i < s.n; i += step) pts.push([s.lat[i], s.lon[i]]); pts.push([s.lat[s.n - 1], s.lon[s.n - 1]]); poly = encodePoly(pts); }
-        fix[r.stravaId] = poly; changed = true;
+        fix[r.stravaId] = poly; fixAt[r.stravaId] = [poly, Date.now()]; changed = true;
         runs.forEach(x => { if (String(x.stravaId) === String(r.stravaId) && poly) x.poly = poly; });
       } catch (e) { if (e.status === 401) break; }
     }
     polyBusy = false;
-    if (changed) { store.set('pp.polyfix', fix); store.set(userKey('runs'), runs); renderRecent(); if (view === 'progresso') renderProgress(); }
+    if (changed) { store.set('pp.polyfix2', fixAt); store.set(userKey('runs'), runs); renderRecent(); if (view === 'progresso') renderProgress(); }
   }
   function renderRecent() {
     const box = $('recentCard'); if (!box) return;
     const rs = allRuns().slice(-3).reverse();
     if (!rs.length) {
       box.hidden = false;
-      box.innerHTML = `<div class="card-head"><h2>Últimos treinos</h2></div><p class="muted small">${strava.connected ? 'Nenhuma corrida nos últimos 90 dias no Strava.' : 'Conecte o Strava para ver aqui seus últimos treinos com o percurso.'}</p>${strava.connected ? '' : '<div class="row-actions"><button class="btn strava sm" type="button" data-strava-connect>Conectar com Strava</button></div>'}`;
+      box.innerHTML = `<div class="card-head"><h2>Últimos treinos</h2></div><p class="muted small">${strava.connected ? 'Nenhuma corrida nos últimos 90 dias no Strava.' : 'Conecte o Strava para ver aqui seus últimos treinos com o percurso.'}</p>${strava.connected ? '' : '<div class="row-actions"><button class="strava-btn" type="button" data-strava-connect aria-label="Connect with Strava"><img src="/strava/connect-with-strava.svg" alt="Connect with Strava" width="193" height="48"></button></div>'}`;
       return;
     }
     box.hidden = false;
@@ -2217,7 +2316,7 @@
       const when = r.date === today ? 'hoje' : r.date === addDays(today, -1) ? 'ontem' : `${WD[D(r.date).getDay()]} ${ddmm(r.date)}`;
       return `<button class="rc" type="button" data-rdate="${r.date}" data-sid="${esc(r.stravaId || '')}">${r.trainer ? treadSvg() : routeSvg(r.poly, 64)}<span class="rc-main"><span class="rc-top"><b>${esc(pd && pd.title && isRunType(pd.type) ? pd.title : r.name)}</b>${chip}</span><small class="muted">${when}${r.trainer ? ' · esteira' : ''}</small>` +
         `<span class="rc-m"><span><b>${r.km.toFixed(2).replace('.', ',')}</b> km</span><span><b>${A.fmtTime(r.sec)}</b></span><span><b>${A.fmtPace(r.sec / r.km)}</b>/km</span>${r.hr ? `<span><b>${r.hr}</b> bpm</span>` : ''}</span></span></button>`;
-    }).join('') + `</div>`;
+    }).join('') + `</div>` + PWR;
     bindGoto(box);
     box.querySelectorAll('.rc').forEach(b => b.onclick = () => openRunSheet(b.dataset.sid));
     fillMissingPolys(rs);
@@ -2262,7 +2361,7 @@
     const w = $('wStrava'); if (!w) return;
     w.classList.toggle('ok', strava.connected);
     const a = w.querySelector('.row-actions');
-    a.innerHTML = strava.connected ? `<span class="chip good">${CHECK}Strava conectado</span>` : strava.checked && strava.configured === false ? '<span class="muted small">Strava indisponível agora.</span>' : '<button class="btn strava" type="button" data-strava-connect>Conectar com Strava</button>';
+    a.innerHTML = strava.connected ? `<span class="chip good">${CHECK}Strava conectado</span>` : strava.checked && strava.configured === false ? '<span class="muted small">Strava indisponível agora.</span>' : '<button class="strava-btn" type="button" data-strava-connect aria-label="Connect with Strava"><img src="/strava/connect-with-strava.svg" alt="Connect with Strava" width="193" height="48"></button>';
   }
   $('wRace').onclick = () => { location.hash = 'provas'; raceEdit = null; setTimeout(() => renderRaceForm(true), 60); };
   function renderAll() {
@@ -2283,7 +2382,8 @@
   }
   document.querySelectorAll('[data-example]').forEach(b => b.onclick = async () => { try { resetPlanExtras(); setPlanMd(await examplePlanMd(), 'exemplo'); } catch (e) { showToast('Não consegui carregar o exemplo.', true); } });
   $('bkSave').onclick = () => {
-    const blob = new Blob([JSON.stringify({ app: 'pacepro', v: 2, plan_md: planMd, done, extra, runs }, null, 1)], { type: 'application/json' });
+    // Sem dados do Strava no arquivo (regra dos 7 dias). Depois de restaurar, o app busca de novo no Strava.
+    const blob = new Blob([JSON.stringify({ app: 'pacepro', v: 3, plan_md: planMd, done: doneNoStrava(done), extra }, null, 1)], { type: 'application/json' });
     const el = document.createElement('a'); el.href = URL.createObjectURL(blob); el.download = `pacepro-backup-${today}.json`;
     document.body.appendChild(el); el.click(); el.remove(); setTimeout(() => URL.revokeObjectURL(el.href), 1000);
   };
@@ -2292,7 +2392,7 @@
     try {
       const j = JSON.parse(await f.text());
       if (!j || j.app !== 'pacepro') throw new Error();
-      done = j.done || {}; extra = { ...defaultExtra(), ...(j.extra || {}) }; runs = Array.isArray(j.runs) ? j.runs : []; store.set(userKey('runs'), runs);
+      done = keepLocalStrava(doneNoStrava(j.done), done); extra = { ...defaultExtra(), ...(j.extra || {}) };
       setPlanMd(j.plan_md || null, 'salvo'); saveNow(); showToast('Backup restaurado.');
     } catch (err) { showToast('Esse arquivo não é um backup do PacePro.', true); }
   };

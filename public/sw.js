@@ -1,5 +1,5 @@
 /* PacePro: funciona sem internet. Arquivos do site em cache; o Strava sempre pela rede. */
-const CACHE = 'pacepro-v57';
+const CACHE = 'pacepro-v58';
 const CORE = ['/', '/styles.css', '/app.js', '/plan-parser.js', '/analysis.js', '/route-map.js', '/route-video.js', '/route-image.js', '/plan-generator.js', '/plano.md', '/strava/connect-with-strava.svg', '/strava/powered-by-strava.svg',
   '/icon.svg', '/icon-192.png', '/apple-touch-icon.png', '/manifest.webmanifest',
   'https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js'];
@@ -50,10 +50,12 @@ async function inboxAdd(m, id) {
 self.addEventListener('push', e => {
   let m = {}; try { m = e.data ? e.data.json() : {}; } catch (err) { m = { body: e.data ? e.data.text() : '' }; }
   const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-  e.waitUntil(Promise.all([inboxAdd(m, id), self.registration.showNotification(m.title || 'PacePro', {
-    body: m.body || '', tag: m.tag || undefined, renotify: !!m.tag, icon: '/icon-192.png', badge: '/badge-96.png', lang: 'pt-BR',
-    data: { url: m.url || '/', id }
-  })]));
+  // Primeiro mostra a notificação (o iPhone cancela a inscrição se um push não mostrar nada), depois guarda na caixa.
+  const opts = { body: m.body || '', icon: '/icon-192.png', data: { url: m.url || '/', id } };
+  if (m.tag) opts.tag = m.tag;
+  e.waitUntil(self.registration.showNotification(m.title || 'PacePro', opts)
+    .catch(() => self.registration.showNotification(m.title || 'PacePro', { body: m.body || '' }))
+    .then(() => inboxAdd(m, id)).catch(() => {}));
 });
 // Tocar na notificação marca como lida na caixa do app.
 async function inboxRead(id) {

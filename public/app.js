@@ -1631,20 +1631,30 @@
     const kits = (extra.races || []).filter(x => x.kitDate && x.kitDate >= today).map(x => ({ d: x.kitDate, n: x.name, p: x.kitPlace || '' }));
     return { sub: sub.toJSON(), prefs: pushPrefs(), days, race, done: doneDays, kits };
   }
+  // Roda uma etapa e, se falhar, diz qual foi. Falha de rede (ex.: "Load failed" no iPhone) é tentada mais uma vez.
+  async function step(name, fn) {
+    const net = e => e && e.name === 'TypeError' && !e.status;
+    try { return await fn(); }
+    catch (e) {
+      if (net(e)) { await new Promise(r => setTimeout(r, 1200)); try { return await fn(); } catch (e2) { e = e2; } }
+      const msg = net(e) ? 'a conexão caiu' : (e && e.message) || 'erro desconhecido';
+      throw Object.assign(new Error(`Não consegui ${name}: ${msg}.`), { status: e && e.status, net: net(e) });
+    }
+  }
   // Inscreve este aparelho (se preciso) e manda os dados dos lembretes. force: manda mesmo sem mudança.
   async function pushSync(force) {
     if (!pushSupported() || Notification.permission !== 'granted' || !pushMeta().on) return;
     const reg = await swReady();
-    if (!push.key) { const j = await api('/api/push'); push.configured = !!j.configured; push.key = j.publicKey || null; }
+    if (!push.key) { const j = await step('buscar a chave no servidor', () => api('/api/push')); push.configured = !!j.configured; push.key = j.publicKey || null; }
     if (!push.key) throw new Error('As notificações ainda não foram configuradas neste site.');
     let sub = await reg.pushManager.getSubscription();
     const m = pushMeta();
     // A chave do servidor mudou: refaz a inscrição com a nova.
     if (sub && m.key && m.key !== push.key) { await sub.unsubscribe().catch(() => {}); sub = null; }
-    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: u8(push.key) });
+    if (!sub) sub = await step('inscrever o aparelho', () => reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: u8(push.key) }));
     const body = pushPayload(sub), h = hashStr(JSON.stringify(body) + (strava.connected ? (strava.athlete && strava.athlete.id) || 's' : ''));
     if (!force && m.key === push.key && m.sent === h && Date.now() - (m.at || 0) < 864e5) return;
-    await jsonPost('/api/push', body);
+    await step('salvar a inscrição no servidor', () => jsonPost('/api/push', body));
     store.set('pp.push', { ...pushMeta(), key: push.key, sent: h, at: Date.now() });
   }
   // Manda as mudanças do plano alguns segundos depois de salvar (var e function: pode ser chamada antes desta linha).
@@ -1662,6 +1672,7 @@
       : !sup ? 'Este navegador não recebe notificações. Use o Chrome no Android ou o app instalado no iPhone.'
       : push.configured === false ? 'As notificações ainda não foram configuradas neste site (falta o banco de dados no Vercel).'
       : perm === 'denied' ? 'As notificações estão bloqueadas para o PacePro. Libere nas configurações do navegador ou do celular e toque em Ativar de novo.'
+      : m.on && perm !== 'granted' ? 'O aparelho tirou a permissão de notificações do PacePro. Toque em Ativar notificações para ligar de novo.'
       : on ? 'Os avisos chegam neste aparelho mesmo com o app fechado. Escolha quais quer receber:'
       : 'Receba o treino do dia, a contagem para a prova e o aviso quando um treino novo chegar do Strava.';
     $('pushOpts').hidden = !on;
@@ -1699,9 +1710,15 @@
     try {
       await pushSync(false);
       const sub = await (await swReady()).pushManager.getSubscription();
-      await jsonPost('/api/push?a=test', { sub: { endpoint: sub.endpoint } });
+      if (!sub) throw new Error('Este aparelho perdeu a inscrição. Toque em Desativar e depois em Ativar notificações.');
+      const test = () => jsonPost('/api/push?a=test', { sub: { endpoint: sub.endpoint } });
+      // O servidor não tem mais esta inscrição: manda de novo e repete o teste.
+      try { await test(); } catch (e) { if (e.status !== 404) throw e; await pushSync(true); await test(); }
       showToast('Teste enviado. Deve chegar em alguns segundos.');
-    } catch (e) { showToast(e.message, true); }
+    } catch (e) {
+      // Falha de rede no teste: o envio pode ter dado certo mesmo assim.
+      showToast(e && e.name === 'TypeError' ? 'A conexão caiu durante o teste. Veja se a notificação chegou; se não, tente de novo.' : e.message, true);
+    }
     push.busy = false; renderPush();
   };
   document.querySelectorAll('[data-push]').forEach(c => c.onchange = () => {

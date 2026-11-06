@@ -1547,9 +1547,9 @@
   function loadIcon() { return new Promise(res => { if (iconImg) return res(iconImg); const i = new Image(); i.onload = () => { iconImg = i; res(i); }; i.onerror = () => res(null); i.src = '/icon-512.png'; }); }
   function rr(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
   async function makeCard(draw) {
-    try { await document.fonts.load('800 40px Figtree'); } catch (e) {}
+    try { await document.fonts.load('800 40px Geist'); } catch (e) {}
     const cv = document.createElement('canvas'); cv.width = 1080; cv.height = 1350;
-    const ctx = cv.getContext('2d'), F = (w, s) => `${w} ${s}px Figtree, -apple-system, sans-serif`;
+    const ctx = cv.getContext('2d'), F = (w, s) => `${w} ${s}px Geist, -apple-system, sans-serif`;
     const g = ctx.createLinearGradient(0, 0, 0, 1350); g.addColorStop(0, '#0B3B37'); g.addColorStop(1, '#0E1013');
     ctx.fillStyle = g; ctx.fillRect(0, 0, 1080, 1350);
     const ic = await loadIcon(); if (ic) ctx.drawImage(ic, 72, 72, 96, 96);

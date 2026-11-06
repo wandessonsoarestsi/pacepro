@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#F2F3F5" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#0E1013" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#F7F7F5" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0C0E10" media="(prefers-color-scheme: dark)">
 <title>PacePro</title>
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -15,7 +15,7 @@
 <meta name="apple-mobile-web-app-title" content="PacePro">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&display=swap">
 <link rel="stylesheet" href="/styles.css">
 <script>try{var t=localStorage.getItem('sub30.theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
 <!-- Contagem de uso (Vercel Web Analytics): sem cookies e sem dados pessoais. -->
@@ -23,12 +23,13 @@
 <script defer src="/_vercel/insights/script.js"></script>
 </head>
 <body>
+<a class="skip" href="#main">Pular para o conteúdo</a>
 <div class="app" id="app">
   <header class="topbar">
     <div class="tb-row">
       <div class="tb-title"><h1 id="pageTitle">Início</h1><small id="pageSub"></small></div>
       <div class="tb-actions">
-        <button class="pill-btn" id="goToday" type="button" hidden>Hoje</button>
+        <button class="btn sm ghost" id="goToday" type="button" hidden>Voltar para hoje</button>
         <button class="round sync" id="syncBtn" type="button" aria-label="Sincronizar com o Strava"><svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.5-4.6L4 8M4 4v4h4M4 13a8 8 0 0 0 14.5 4.6L20 16M20 20v-4h-4"/></svg><i class="sdot" id="syncDot"></i></button>
       </div>
     </div>
@@ -39,7 +40,7 @@
     </div>
   </header>
 
-  <main>
+  <main id="main" tabindex="-1">
     <!-- HOJE -->
     <section data-view="hoje" class="view">
       <div class="card noplan welcome" data-no-plan hidden>
@@ -52,7 +53,8 @@
         </ol>
         <p class="small muted">Só quer ver como funciona? <button class="linkbtn" type="button" data-example>Abrir o plano de exemplo</button></p>
       </div>
-      <div class="stack" data-needs-plan id="todayStack">
+      <div class="split" data-needs-plan id="todayStack">
+        <div class="col col-side">
         <a class="card summary" id="summaryCard" href="#progresso" aria-label="Ver progresso">
           <div class="sm">
             <div class="smh"><span class="lbl">Ciclo até a prova</span><b id="sDays">–</b></div>
@@ -68,26 +70,34 @@
             <svg class="gauge" id="sGauge" viewBox="0 0 300 40" aria-hidden="true"></svg>
             <small class="muted" id="sProjSub">–</small>
           </div>
-          <span class="more" aria-hidden="true">›</span>
+          <span class="more" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></span>
         </a>
-        <div class="card adjust" id="adjust" hidden></div>
-        <div class="card workout" id="workout"></div>
-        <div class="card analysis" id="analysis" hidden></div>
         <div class="card" id="recentCard" hidden></div>
         <div class="card" id="nextCard" hidden></div>
         <div class="card" id="weekSumHome" hidden></div>
+        </div>
+        <div class="col col-main">
+        <div class="card adjust" id="adjust" hidden></div>
+        <div class="card workout" id="workout" aria-live="polite"><div class="skel-group" aria-hidden="true"><i class="skel w30"></i><i class="skel h28 w70"></i><div class="skel-row"><i class="skel h56"></i><i class="skel h56"></i><i class="skel h56"></i></div><i class="skel h80"></i><i class="skel h48"></i></div></div>
+        <div class="card analysis" id="analysis" hidden></div>
+        </div>
       </div>
     </section>
 
     <!-- PLANO -->
     <section data-view="plano" class="view" hidden>
       <div class="card" data-no-plan hidden><h3>Sem plano ainda</h3><p class="muted">Gere ou importe um plano para começar.</p><div class="row-actions"><a class="btn" href="#ajustes" data-open-gen>Gerar meu plano</a><button class="btn ghost" type="button" data-example>Usar plano de exemplo</button></div></div>
-      <div class="stack" data-needs-plan>
+      <div class="split" data-needs-plan>
+        <div class="col col-main">
         <div class="card" id="prePlan" hidden></div>
-        <div class="card" id="actsCard" hidden></div>
         <div class="pills" id="weekPills" role="tablist" aria-label="Semanas"></div>
         <div class="card" id="weekNote"></div>
         <div class="card list" id="weekDays"></div>
+        <button class="btn ghost wide" id="openFull" type="button">Ver o plano completo</button>
+        <div class="card prose" id="fullPlan" hidden></div>
+        </div>
+        <div class="col col-side">
+        <div class="card" id="actsCard" hidden></div>
         <div class="card" id="raceCard"></div>
         <div class="card" id="testCard"></div>
         <details class="card calc" id="calcCard">
@@ -109,8 +119,7 @@
             <div class="calc-out"><span class="muted small">Ritmo necessário</span><b id="cNeed">–</b></div>
           </div>
         </details>
-        <button class="btn ghost wide" id="openFull" type="button">Ver o plano completo</button>
-        <div class="card prose" id="fullPlan" hidden></div>
+        </div>
       </div>
     </section>
 
@@ -122,36 +131,46 @@
         <div class="tile"><span class="lbl">Meta</span><b id="tGoal">–</b><small id="tGoalSub">–</small></div>
         <div class="tile"><span class="lbl">Último treino</span><b id="tLast">–</b><small id="tLastSub">–</small></div>
       </div>
-      <div class="card">
+      <div class="split">
+      <div class="col col-main">
+      <div class="card" id="chartCard">
         <div class="card-head"><h2 id="chartTitle">Tempo estimado na prova</h2></div>
         <svg class="chart" id="chart" viewBox="0 0 400 240" role="img" aria-label="Evolução da estimativa de tempo"></svg>
         <div class="legend"><span><i class="lg c3"></i>Estimativa</span><span><i class="lg c2 dash"></i>Projeção</span><span><i class="lg c1 dash"></i>Meta</span></div>
         <p class="muted small" id="chartHint"></p>
         <button class="btn ghost sm" id="shareProg" type="button" data-needs-plan>Compartilhar evolução</button>
       </div>
-      <div class="card" id="weekSum"></div>
       <div class="card" id="volCard"></div>
-      <div class="card" id="cadCard"></div>
-      <div class="card" id="dietCard" hidden></div>
-      <div class="card" id="weightCard"></div>
-      <div class="card" id="zonesCard"></div>
       <div class="card list" id="runsCard">
         <div class="card-head"><h2>Corridas</h2><span class="muted small" id="runsSrc"></span></div>
         <div id="runs"></div>
         <button class="linkbtn more-runs" id="moreRuns" type="button" hidden>Ver todas</button>
       </div>
+      </div>
+      <div class="col col-side">
+      <div class="card" id="weekSum"></div>
+      <div class="card" id="zonesCard"></div>
+      <div class="card" id="cadCard"></div>
+      <div class="card" id="dietCard" hidden></div>
+      <div class="card" id="weightCard"></div>
+      </div>
+      </div>
+    </section>
+
+    <!-- PROVAS -->
+    <section data-view="provas" class="view" hidden>
+      <div class="split">
+        <div class="col col-main"><div class="card" id="racesCard"></div></div>
+        <div class="col col-side"><div class="card" id="raceFormCard" hidden></div></div>
+      </div>
     </section>
 
     <!-- AJUSTES -->
-    <!-- PROVAS -->
-    <section data-view="provas" class="view" hidden>
-      <div class="card" id="racesCard"></div>
-      <div class="card" id="raceFormCard" hidden></div>
-    </section>
-
     <section data-view="ajustes" class="view" hidden>
-      <div class="card">
-        <div class="card-head"><div class="hgroup"><span class="brand-ico strava-ico">S</span><h2>Strava</h2></div><span class="chip" id="stravaChip">–</span></div>
+      <div class="split">
+      <div class="col col-main">
+      <div class="card" id="stravaCard">
+        <div class="card-head"><div class="hgroup"><span class="brand-ico strava-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M10 3l-6 12h3.6L10 10.2 12.4 15H16zM16 15l-1.8 3.6L12.4 15H9.8l4.4 8.6 4.4-8.6z"/></svg></span><h2>Strava</h2></div><span class="chip" id="stravaChip">–</span></div>
         <p class="muted small" id="stravaText">Conecte para puxar seus treinos e atualizar a estimativa.</p>
         <div class="row-actions">
           <button class="btn strava" id="stravaConnect" type="button" data-strava-connect>Conectar com Strava</button>
@@ -169,9 +188,9 @@
           <button class="act" id="planReset" type="button"><svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.3-5.6L4 8.7M4 4v4.7h4.7"/></svg><span>Exemplo</span></button>
         </div>
         <div class="row-actions" id="planDelRow" hidden><button class="btn danger sm" id="planDel" type="button">Apagar plano</button></div>
-        <div class="msg bad" id="planDelAsk" hidden>
-          <p style="margin:0 0 10px"><b>Tem certeza que quer apagar o plano?</b> Os treinos do plano e os ajustes feitos nele somem deste aparelho. Suas corridas do Strava e o histórico de treinos continuam.</p>
-          <div class="row-actions"><button class="btn sm" id="planDelYes" type="button" style="background:var(--bad);color:#fff">Sim, apagar</button><button class="btn ghost sm" id="planDelNo" type="button">Cancelar</button></div>
+        <div class="confirm" id="planDelAsk" role="alertdialog" aria-labelledby="planDelQ" hidden>
+          <p><b id="planDelQ">Tem certeza que quer apagar o plano?</b> Os treinos do plano e os ajustes feitos nele somem deste aparelho. Suas corridas do Strava e o histórico de treinos continuam.</p>
+          <div class="row-actions"><button class="btn sm destructive" id="planDelYes" type="button">Sim, apagar</button><button class="btn ghost sm" id="planDelNo" type="button">Cancelar</button></div>
         </div>
         <input id="mdFile" type="file" accept=".md,.markdown,text/markdown,text/plain" hidden>
         <p class="msg" id="planMsg" hidden></p>
@@ -210,6 +229,8 @@
         <details class="help"><summary>Formato do arquivo .md</summary><p class="muted small">Linha "Prova:" com a data, linha "Meta:" com o tempo, títulos "### Semana N" e tabelas com Data | Corrida | Esteira | Musculação.</p></details>
       </div>
 
+      </div>
+      <div class="col col-side">
       <div class="card">
         <div class="card-head"><h2>Preferências</h2></div>
         <div class="prow">
@@ -261,10 +282,13 @@
         </div>
         <p class="msg" id="clearMsg" hidden></p>
       </div>
+      </div>
+      </div>
     </section>
   </main>
 
-  <nav class="tabbar" aria-label="Navegação">
+  <nav class="tabbar" aria-label="Navegação principal">
+    <div class="brand" aria-hidden="true"><img src="/icon.svg" alt="" width="32" height="32"><span>PacePro</span></div>
     <a href="#hoje" data-tab="hoje"><span class="ti"><svg viewBox="0 0 24 24"><path d="M4 11l8-7 8 7v9a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z"/></svg></span><span>Início</span></a>
     <a href="#plano" data-tab="plano"><span class="ti"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg></span><span>Plano</span></a>
     <a href="#progresso" data-tab="progresso"><span class="ti"><svg viewBox="0 0 24 24"><path d="M4 19h16M6 15l4-4 3 3 5-6"/></svg></span><span>Progresso</span></a>
@@ -273,7 +297,7 @@
   </nav>
 </div>
 <div class="runsheet" id="runSheet" hidden role="dialog" aria-modal="true" aria-label="Corrida">
-  <div class="rs-bar"><button class="rs-back" id="rsBack" type="button">‹ Voltar</button><b>Corrida</b><span></span></div>
+  <div class="rs-bar"><button class="rs-back" id="rsBack" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>Voltar</button><b>Corrida</b><span></span></div>
   <div class="rs-body"></div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>

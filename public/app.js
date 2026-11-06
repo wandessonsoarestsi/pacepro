@@ -1957,7 +1957,7 @@
   }
   // Miniatura padrão da esteira: o "percurso" é a volta da lona entre os dois rolos.
   function treadSvg() {
-    return `<svg class="route tread" viewBox="0 0 64 64" aria-hidden="true"><path class="r" d="M10 40l44-12"/><path d="M15 31.5h34a8 8 0 0 1 0 16H15a8 8 0 0 1 0-16z" transform="rotate(-15 32 39.5)"/><circle class="rl" cx="15" cy="39.5" r="4" transform="rotate(-15 32 39.5)"/><circle class="rl" cx="49" cy="39.5" r="4" transform="rotate(-15 32 39.5)"/><circle class="s" cx="25" cy="34.5" r="2.6" transform="rotate(-15 32 39.5)"/><circle class="e" cx="31" cy="31.5" r="2.6" transform="rotate(-15 32 39.5)"/><path class="r" d="M47 26l5-12M52 14h5"/></svg>`;
+    return `<svg class="route tread" viewBox="0 0 64 64" aria-hidden="true"><path d="M7 49H47a6 6 0 0 0 6-5.5L57 17H43"/><circle class="s" cx="7" cy="49" r="2.8"/><circle class="e" cx="43" cy="17" r="2.8"/></svg>`;
   }
   function routeSvg(poly, size, indoor) {
     size = size || 64;

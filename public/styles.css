@@ -701,3 +701,4 @@ details.rpast summary::-webkit-details-marker{display:none}
 
 /* iPhone dá zoom sozinho em campos com letra menor que 16px. */
 input,select,textarea{font-size:16px!important}
+.rt-ghost .eyebrow{display:block;margin-bottom:2px}.rt-gx{margin:0 0 8px}

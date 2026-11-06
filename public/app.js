@@ -686,7 +686,7 @@
     if (ins.ghost && ins.ghost.bestI != null && ins.ghost.bestLead > 0) moments.push({ ico: '👻', cls: 'g', i: ins.ghost.bestI, t: 'Maior vantagem sobre o fantasma', d: `${ins.ghost.bestLead} s à frente de ${ddmm(g.date)} no km ${RI.kmTxt(s.d[ins.ghost.bestI])}` });
     const repRows = ins.reps.map(r => ({ ico: String(r.n), cls: 'r ' + r.tone, i: r.i0, i1: r.i1, t: `Tiro ${r.n} · ${Math.round(r.dist / 10) * 10} m`, d: `${RI.fmtPace(r.pace)}/km${r.target ? ` (alvo ${RI.fmtPace(r.target)})` : ''}${r.hr ? ` · FC ${Math.round(r.hr)}` : ''}`, tone: r.tone }));
     const gh = ins.ghost;
-    const ghostHtml = gh ? `<div class="rt-ghost"><b>${gh.final < 0 ? `${-gh.final} s mais rápido` : gh.final > 0 ? `${gh.final} s mais lento` : 'Mesmo tempo'}</b> que em ${ddmm(g.date)} no mesmo percurso` +
+    const ghostHtml = gh ? `<div class="rt-ghost"><span class="eyebrow">Corredor fantasma</span><p class="muted small rt-gx">O fantasma é você mesmo na última vez que correu este percurso. O app compara, no mesmo tempo de corrida, onde você está hoje e onde estava naquele dia.</p><b>${gh.final < 0 ? `${-gh.final} s mais rápido` : gh.final > 0 ? `${gh.final} s mais lento` : 'Mesmo tempo'}</b> que em ${ddmm(g.date)} no mesmo percurso` +
       (gh.perKm.length ? `<div class="rt-kms">${gh.perKm.map(k => `<span class="${k.diff < 0 ? 'good' : k.diff > 0 ? 'bad' : ''}">km ${k.k} ${k.diff > 0 ? '+' : k.diff < 0 ? '−' : '±'}${Math.abs(k.diff)}s</span>`).join('')}</div>` : '') + '</div>' : '';
     node.innerHTML = `<div class="rt-head"><span class="eyebrow">Mapa da corrida</span>${modes.length > 1 ? `<div class="rt-modes" role="group" aria-label="Cor do percurso">${modes.map(([k, t]) => `<button type="button" data-m="${k}" aria-pressed="${k === mode}">${t}</button>`).join('')}</div>` : ''}</div>` +
       `<div class="rt-map"></div><div class="rt-legend"></div>` + (window.RouteVideo ? '<button type="button" class="btn wide rt-video">Gerar percurso dinâmico</button>' : '') + '<button type="button" class="btn ghost wide rt-image">Gerar imagem do percurso</button>' + ghostHtml +
@@ -719,7 +719,7 @@
       for (let i = 1; i <= s.n; i++) if (i === s.n || col[i] !== col[start]) { L.polyline(pts.slice(start, Math.min(i + 1, s.n)), { color: col[start], weight: 4.5, opacity: 1, lineCap: 'round', interactive: false }).addTo(colorLayer); start = i; }
       const lg = node.querySelector('.rt-legend');
       lg.innerHTML = mode === 'effort' ? Z.z.map((z, k) => `<span><i style="background:${ZC[k]}"></i>Z${k + 1}</span>`).join('') + '<small>zonas de FC</small>'
-        : mode === 'ghost' ? `<span><i style="background:${ZC[2]}"></i>ganhando tempo</span><span><i style="background:${ZC[4]}"></i>perdendo tempo</span><small>contra ${ddmm(g.date)}</small>`
+        : mode === 'ghost' ? `<span><i style="background:${ZC[2]}"></i>ganhando tempo</span><span><i style="background:${ZC[4]}"></i>perdendo tempo</span><small>contra você mesmo em ${ddmm(g.date)} (o fantasma)</small>`
         : `<small>mais lento</small><span class="grad" style="background:linear-gradient(90deg,${ZC[1]},${cssVar('--c1')},${ZC[2]},${ZC[3]},${ZC[4]})"></span><small>mais rápido</small>`;
       node.querySelectorAll('.rt-modes button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.m === mode)));
     }

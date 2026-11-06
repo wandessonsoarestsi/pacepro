@@ -25,7 +25,7 @@ outro aparelho. A conexão com o Strava fica num cookie criptografado do navegad
 - Comparação de cada treino com os treinos iguais anteriores (ritmo e FC da parte principal).
 - Dia da prova: horários a partir da largada, checklist que dá para marcar e tela da prova com ritmo km a km.
 - Depois da prova: semana de recuperação e próximo objetivo escolhido por você.
-- Calendário de provas (aba Provas), com exportação para a agenda (.ics) e plano montado para cada prova.
+- Calendário de provas (aba Provas), em lista ou em calendário do mês (dias de prova e de retirada do kit marcados), com exportação para a agenda (.ics) e plano montado para cada prova.
 - Conta com login do Google (opcional): os dados vão para a nuvem e sincronizam entre aparelhos. A versão mais nova ganha.
 - Aviso e botão de atualizar quando sai uma versão nova (`/api/version`).
 - Notificações (Ajustes → Notificações), cada uma pode ser desligada: treino do dia às 7h, contagem para a prova (30, 14, 7, 3 e 1 dia), treino-chave de ontem que ficou sem fazer e treino novo no Strava. No iPhone, só com o app instalado na tela de início (iOS 16.4 ou mais novo).

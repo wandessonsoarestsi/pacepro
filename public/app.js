@@ -2400,15 +2400,62 @@
     return `<div class="rrow${past ? ' past' : ''}"><button class="rr-main" type="button" data-rid="${esc(r.id)}" aria-expanded="${open}"><span class="dtile"><b>${dd.getDate()}</b><small>${WD[dd.getDay()]}</small></span><span class="rr-txt"><span class="t">${esc(r.name)}</span><span class="s">${sub}</span>${when ? `<span class="s when">${when}</span>` : ''}${kit}</span><span class="rr-end">${chip}<span class="chev" aria-hidden="true">${open ? '▴' : '▾'}</span></span></button>` +
       (open ? `<div class="rr-act">${!past && !r.plan ? `<button class="btn sm" type="button" data-rplan="${esc(r.id)}">Montar plano para esta prova</button>` : ''}${!past ? `<button class="btn ghost sm" type="button" data-rics="${esc(r.id)}">Adicionar à agenda</button>` : ''}<button class="btn ghost sm" type="button" data-redit="${esc(r.id)}">Editar</button><button class="btn ghost sm danger" type="button" data-rdel="${esc(r.id)}">${r.id === 'plan' ? 'Tirar do calendário' : 'Excluir'}</button></div>` : '') + `</div>`;
   }
+  // Visão da aba Provas: lista ou calendário do mês (a escolha fica no aparelho).
+  let raceView = store.get('pacepro.raceView', 'lista') === 'cal' ? 'cal' : 'lista', raceMonth = null, raceDay = null, raceNewDate = '';
+  const monKey = (y, m) => `${y}-${pad(m + 1)}`;
+  function raceCalHtml(list) {
+    if (!raceMonth) { const nx = list.find(r => r.date >= today); raceMonth = (nx ? nx.date : today).slice(0, 7); }
+    const y = +raceMonth.slice(0, 4), m = +raceMonth.slice(5) - 1;
+    const first = new Date(y, m, 1).getDay(), days = new Date(y, m + 1, 0).getDate();
+    const byDay = {}, add = (d, k, r) => { (byDay[d] = byDay[d] || { race: [], kit: [] })[k].push(r); };
+    list.forEach(r => { if (r.date.startsWith(raceMonth)) add(r.date, 'race', r); if (r.kitDate && r.kitDate.startsWith(raceMonth)) add(r.kitDate, 'kit', r); });
+    const arrow = d => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${d}"/></svg>`;
+    let h = `<div class="rcal-nav"><button class="round" type="button" data-rmon="-1" aria-label="Mês anterior">${arrow('M15 6l-6 6 6 6')}</button><b class="rcal-title">${MONL[m]} de ${y}</b><button class="round" type="button" data-rmon="1" aria-label="Próximo mês">${arrow('M9 6l6 6-6 6')}</button></div>`;
+    h += `<div class="rcal" role="grid">` + WD.map(w => `<span class="rcal-wd">${w}</span>`).join('');
+    for (let i = 0; i < first; i++) h += '<span></span>';
+    for (let d = 1; d <= days; d++) {
+      const iso = `${raceMonth}-${pad(d)}`, e = byDay[iso], cls = ['rcal-d'];
+      if (e && e.race.length) cls.push('race', iso < today ? 'past' : '');
+      if (e && e.kit.length) cls.push('kit');
+      if (iso === today) cls.push('today');
+      if (iso === raceDay) cls.push('sel');
+      const lab = [`${d} de ${MONL[m]}`, e && e.race.length ? e.race.map(r => 'prova ' + r.name).join(', ') : '', e && e.kit.length ? 'retirada do kit' : ''].filter(Boolean).join(', ');
+      h += `<button type="button" class="${cls.filter(Boolean).join(' ')}" data-rday="${iso}" aria-label="${esc(lab)}" aria-pressed="${iso === raceDay}"><span>${d}</span>${e && e.kit.length ? '<i aria-hidden="true"></i>' : ''}</button>`;
+    }
+    h += `</div><div class="rcal-leg"><span><i class="lg race"></i>Prova</span><span><i class="lg kit"></i>Retirada do kit</span><span><i class="lg today"></i>Hoje</span></div>`;
+    if (raceDay && raceDay.startsWith(raceMonth)) {
+      const dd = D(raceDay), e = byDay[raceDay] || { race: [], kit: [] };
+      h += `<div class="rcal-day"><div class="rmonth">${WDL[dd.getDay()]}, ${dd.getDate()} de ${MONL[dd.getMonth()]}</div>`;
+      h += e.race.map(raceRow).join('');
+      h += e.kit.map(r => `<div class="rkit"><span class="rkit-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 8h12l-1 12H7L6 8zM9 8a3 3 0 0 1 6 0"/></svg></span><span class="rr-txt"><span class="t">Retirada do kit</span><span class="s">${esc(r.name)}${r.kitPlace ? ' · ' + esc(r.kitPlace) : ''}</span></span><button class="btn ghost sm" type="button" data-rgo="${esc(r.id)}" data-rgod="${esc(r.date)}">Ver prova</button></div>`).join('');
+      if (!e.race.length && !e.kit.length) h += `<p class="muted small">Nada marcado neste dia.</p>`;
+      if (raceDay >= today) h += `<div class="row-actions"><button class="btn ghost sm" type="button" id="raceAddDay">+ Prova neste dia</button></div>`;
+      h += `</div>`;
+    } else h += `<p class="muted small rcal-hint">Toque num dia para ver a prova ou marcar uma nova.</p>`;
+    return h;
+  }
   function renderRaces() {
     const box = $('racesCard'); if (!box) return;
     const list = allRaces(), up = list.filter(r => r.date >= today), past = list.filter(r => r.date < today).reverse();
+    const ico = { lista: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></svg>', cal: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>' };
     let html = `<div class="card-head"><div><span class="eyebrow">Calendário</span><h2>Próximas provas</h2></div><button class="btn sm" id="raceAdd" type="button">+ Prova</button></div>`;
-    html += up.length ? `<p class="muted small">Toque numa prova para editar, excluir, montar o plano ou pôr na agenda.</p>` : `<p class="muted small">Nenhuma prova marcada. Toque em "+ Prova" para adicionar as próximas.</p>`;
-    let mk = '';
-    up.forEach(r => { const k = r.date.slice(0, 7); if (k !== mk) { mk = k; html += `<div class="rmonth">${MONL[+k.slice(5) - 1]} de ${k.slice(0, 4)}</div>`; } html += raceRow(r); });
-    if (past.length) html += `<details class="rpast"><summary>Provas feitas (${past.length})</summary>${past.map(raceRow).join('')}</details>`;
+    html += `<div class="rview" role="group" aria-label="Como mostrar as provas"><button type="button" data-rview="lista" aria-pressed="${raceView === 'lista'}">${ico.lista}Lista</button><button type="button" data-rview="cal" aria-pressed="${raceView === 'cal'}">${ico.cal}Calendário</button></div>`;
+    if (raceView === 'cal') html += raceCalHtml(list);
+    else {
+      html += up.length ? `<p class="muted small">Toque numa prova para editar, excluir, montar o plano ou pôr na agenda.</p>` : `<p class="muted small">Nenhuma prova marcada. Toque em "+ Prova" para adicionar as próximas.</p>`;
+      let mk = '';
+      up.forEach(r => { const k = r.date.slice(0, 7); if (k !== mk) { mk = k; html += `<div class="rmonth">${MONL[+k.slice(5) - 1]} de ${k.slice(0, 4)}</div>`; } html += raceRow(r); });
+      if (past.length) html += `<details class="rpast"><summary>Provas feitas (${past.length})</summary>${past.map(raceRow).join('')}</details>`;
+    }
     box.innerHTML = html;
+    box.querySelectorAll('[data-rview]').forEach(b => b.onclick = () => { raceView = b.dataset.rview; store.set('pacepro.raceView', raceView); renderRaces(); });
+    box.querySelectorAll('[data-rmon]').forEach(b => b.onclick = () => { const y = +raceMonth.slice(0, 4), m = +raceMonth.slice(5) - 1 + +b.dataset.rmon, dt = new Date(y, m, 1); raceMonth = monKey(dt.getFullYear(), dt.getMonth()); renderRaces(); });
+    box.querySelectorAll('[data-rday]').forEach(b => b.onclick = () => {
+      raceDay = raceDay === b.dataset.rday ? null : b.dataset.rday;
+      const rs = raceDay ? list.filter(r => r.date === raceDay) : []; raceOpen = rs.length === 1 ? rs[0].id : null; renderRaces();
+    });
+    box.querySelectorAll('[data-rgo]').forEach(b => b.onclick = () => { raceDay = b.dataset.rgod; raceMonth = raceDay.slice(0, 7); raceOpen = b.dataset.rgo; renderRaces(); });
+    if ($('raceAddDay')) $('raceAddDay').onclick = () => { raceEdit = null; raceNewDate = raceDay; renderRaceForm(true); };
     box.querySelectorAll('[data-rid]').forEach(b => b.onclick = () => { raceOpen = raceOpen === b.dataset.rid ? null : b.dataset.rid; renderRaces(); });
     const find = id => list.find(r => r.id === id);
     box.querySelectorAll('[data-rplan]').forEach(b => b.onclick = () => { const r = find(b.dataset.rplan); prefillGen(r.dist, r.goal, r.date); });
@@ -2423,8 +2470,8 @@
   function renderRaceForm(open) {
     const box = $('raceFormCard'); if (!box) return;
     if (!open) { box.hidden = true; return; }
-    const r = (raceEdit === 'plan' ? allRaces().find(x => x.id === 'plan') : (extra.races || []).find(x => x.id === raceEdit)) || { name: '', date: '', dist: 5, goal: '', place: '', status: 'inscrito' };
-    box.hidden = false;
+    const r = (raceEdit === 'plan' ? allRaces().find(x => x.id === 'plan') : (extra.races || []).find(x => x.id === raceEdit)) || { name: '', date: raceNewDate, dist: 5, goal: '', place: '', status: 'inscrito' };
+    box.hidden = false; raceNewDate = '';
     box.innerHTML = `<div class="card-head"><h2>${raceEdit ? 'Editar prova' : 'Nova prova'}</h2></div><form class="form" id="raceForm" novalidate>` +
       `<label for="rfName" class="full">Nome<input id="rfName" type="text" value="${esc(r.name)}" placeholder="ex.: Corrida da Ponte"></label>` +
       `<label for="rfDate">Data<input id="rfDate" type="date" value="${esc(r.date)}"></label>` +
@@ -2453,7 +2500,7 @@
       const item = { id: raceEdit && raceEdit !== 'plan' ? raceEdit : 'r' + Date.now().toString(36), name, date, dist, goal, place: $('rfPlace').value.trim(), status: $('rfStatus').value, kitDate: kitDate || '', kitPlace: kitDate ? kitPlace : '' };
       if (raceEdit === 'plan' && plan && date !== plan.race) extra.hidePlanRace = plan.race;
       extra.races = (extra.races || []).filter(x => x.id !== item.id).concat(item);
-      raceEdit = null; raceOpen = item.id; persist(); renderRaceForm(false); renderAll();
+      raceEdit = null; raceOpen = item.id; raceDay = item.date; raceMonth = item.date.slice(0, 7); persist(); renderRaceForm(false); renderAll();
       if (!plan) { prefillGen(item.dist, item.goal, item.date); showToast(item.goal ? 'Prova salva. Confira os dados e toque em "Gerar plano".' : 'Prova salva. Agora escreva a sua meta para gerar o plano.'); if (!item.goal) setTimeout(() => $('gGoal').focus(), 300); }
       else showToast(kitDate && !pushMeta().on ? 'Prova salva. Ative as notificações em Ajustes para receber o lembrete do kit.' : 'Prova salva.');
     };

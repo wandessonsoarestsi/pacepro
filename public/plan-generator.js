@@ -201,7 +201,11 @@ O número de séries e repetições de cada semana está na linha em itálico ab
       if (!SPORTS[k] || out.some(x => x.k === k && k !== 'other')) return;
       const name = k === 'other' ? String(s.name || '').trim().slice(0, 40) : '';
       if (k === 'other' && !name) return;
-      out.push({ k, focus: !!(s && s.focus), goal: String((s && s.goal) || '').trim().slice(0, 80), name, label: name || SPORTS[k].label });
+      const goal = String((s && s.goal) || '').trim().slice(0, 80);
+      // Dias fixos da modalidade (0 = segunda ... 6 = domingo). Triatlo não tem: ele se divide em natação, bike e corrida.
+      const days = k === 'tri' ? [] : [...new Set(((s && s.days) || []).map(Number).filter(d => d >= 0 && d <= 6))].sort((a, b) => a - b);
+      // Modalidade com meta é foco; sem meta, é complementar e só se encaixa nos treinos do foco.
+      out.push({ k, focus: !!(s && s.focus) || !!goal, goal, name, label: name || SPORTS[k].label, days });
     });
     if (out.length && !out.some(s => s.focus)) out[0].focus = true;
     return out;
@@ -211,9 +215,11 @@ O número de séries e repetições de cada semana está na linha em itálico ab
   function weeklyCounts(sports, nDays, level) {
     const c = {}, focus = {};
     const set = (k, n, f) => { c[k] = Math.max(c[k] || 0, n); if (f) focus[k] = true; };
+    const fixed = {};
     sports.forEach(s => {
       if (s.k === 'tri') return;
       const key = s.k === 'other' ? 'other' : s.k;
+      if (s.days && s.days.length) { c[key] = Math.min(s.days.length, key === 'run' ? 6 : 7); fixed[key] = true; if (s.focus) focus[key] = true; return; }
       set(key, PER_WEEK[key][s.focus ? 0 : 1], s.focus);
     });
     const tri = sports.find(s => s.k === 'tri');
@@ -223,19 +229,20 @@ O número de séries e repetições de cada semana está na linha em itálico ab
       if (f) set('brick', 1, true);
     }
     const hy = sports.find(s => s.k === 'hyrox');
-    if (hy && c.run) c.run = Math.max(c.run, hy.focus ? 3 : 2);
-    Object.keys(c).forEach(k => { c[k] = Math.min(c[k], nDays, k === 'run' ? 6 : 7); });
-    const cap = level === 'iniciante' ? nDays + Math.floor(nDays / 2) : level === 'pausa' ? nDays + Math.ceil(nDays / 2) : nDays * 2;
+    if (hy && c.run && !fixed.run) c.run = Math.max(c.run, hy.focus ? 3 : 2);
+    Object.keys(c).forEach(k => { if (!fixed[k]) c[k] = Math.min(c[k], nDays, k === 'run' ? 6 : 7); });
+    let cap = level === 'iniciante' ? nDays + Math.floor(nDays / 2) : level === 'pausa' ? nDays + Math.ceil(nDays / 2) : nDays * 2;
+    cap = Math.max(cap, Object.keys(fixed).reduce((a, k) => a + c[k], 0));
     const total = () => Object.values(c).reduce((a, b) => a + b, 0);
     const dropped = [];
     const rank = k => (focus[k] ? 100 : 0) + CUT_ORDER.indexOf(k);
     // Corta nesta ordem: sessões extras das complementares, complementares inteiras, sessões extras do foco (até 2), foco.
     const steps = [
-      k => !focus[k] && c[k] > 1 ? 'trim' : null,
-      k => !focus[k] ? 'drop' : null,
-      k => focus[k] && c[k] > 2 ? 'trim' : null,
-      k => focus[k] && c[k] > 1 ? 'trim' : null,
-      () => 'drop'
+      k => !fixed[k] && !focus[k] && c[k] > 1 ? 'trim' : null,
+      k => !fixed[k] && !focus[k] ? 'drop' : null,
+      k => !fixed[k] && focus[k] && c[k] > 2 ? 'trim' : null,
+      k => !fixed[k] && focus[k] && c[k] > 1 ? 'trim' : null,
+      k => !fixed[k] ? 'drop' : null
     ];
     for (const st of steps) {
       while (total() > cap) {
@@ -244,7 +251,7 @@ O número de séries e repetições de cada semana está na linha em itálico ab
         if (st(k) === 'trim') c[k]--; else { c[k] = 0; dropped.push(k); }
       }
     }
-    return { counts: c, focus, dropped, cap };
+    return { counts: c, focus, fixed, dropped, cap };
   }
 
   // Dias de corrida dentro dos dias de treino: espalhados, com o fim de semana para o longo quando der.
@@ -269,35 +276,46 @@ O número de séries e repetições de cada semana está na linha em itálico ab
 
   // Monta a semana-modelo: o que vai em cada dia (0 = segunda ... 6 = domingo).
   // runKinds: { dia: 'I'|'T'|'E'|'X'|'L' }. Devolve sched: { dia: [sessões que não são corrida] } e as que não couberam.
+  // Complementares (sem meta) usam só as variações leves, para não roubar recuperação do foco.
+  const EASY_PAT = { swim: [1, 2], bike: [1, 2], hyrox: [2], crossfit: [2], other: [0], mobility: [0, 1], brick: [0] };
+  const MAX_DAY = 3; // nunca mais de 3 atividades no mesmo dia
   function weekTemplate(days, counts, focus, runKinds, sports) {
     const HARD_RUN = { I: 1, T: 1, L: 1 };
     const sched = {}; days.forEach(d => { sched[d] = []; });
     const list = [];
+    const fixedDays = k => { const sp = sports.find(s => (s.k === 'other' ? 'other' : s.k) === k); return sp && sp.days && sp.days.length ? sp.days : null; };
     Object.keys(counts).forEach(k => {
       if (k === 'run' || !counts[k]) return;
+      const fd = fixedDays(k);
       if (k === 'gym') {
-        GYM_LETTERS.slice(0, counts[k]).forEach((L, i) => list.push({ k, letter: L, hard: L === 'A' || L === 'C', legs: L === 'A' || L === 'C', focus: !!focus[k], i }));
+        GYM_LETTERS.slice(0, counts[k]).forEach((L, i) => list.push({ k, letter: L, hard: L === 'A' || L === 'C', legs: L === 'A' || L === 'C', focus: !!focus[k], i, at: fd ? fd[i] : null }));
         return;
       }
-      const pat = (PATTERN[k] || [])[counts[k]] || Array.from({ length: counts[k] }, (_, i) => i % 2);
+      const easy = !focus[k] && EASY_PAT[k];
+      const pat = easy ? Array.from({ length: counts[k] }, (_, i) => easy[i % easy.length])
+        : (PATTERN[k] || [])[counts[k]] || Array.from({ length: counts[k] }, (_, i) => i % 2);
       const name = k === 'other' ? (sports.find(s => s.k === 'other') || {}).name : '';
       const lib = k === 'other' ? otherSess(name) : SESS[k];
-      pat.forEach((v, i) => { const s = lib[Math.min(v, lib.length - 1)]; list.push({ k, v, hard: !!s.hard, legs: !!s.legs, long: !!s.long, focus: !!focus[k], i, name }); });
+      pat.forEach((v, i) => { const s = lib[Math.min(v, lib.length - 1)]; list.push({ k, v, hard: !!s.hard, legs: !!s.legs, long: !!s.long, focus: !!focus[k], i, name, at: fd ? fd[i] : null }); });
     });
+    // Dias escolhidos pela pessoa entram primeiro, exatamente onde ela pediu.
+    list.filter(s => s.at != null).forEach(s => { (sched[s.at] = sched[s.at] || []).push(s); });
     // Ordem: transição, depois as fortes (foco antes), depois o resto; mobilidade por último.
     const pri = s => (s.k === 'brick' ? 0 : s.k === 'mobility' ? 50 : 10) + (s.hard ? 0 : 20) + (s.focus ? 0 : 5);
     list.sort((a, b) => pri(a) - pri(b) || a.i - b.i);
     const isHardDay = d => !!(HARD_RUN[runKinds[d]] || (sched[d] || []).some(x => x.hard));
     const dropped = [];
-    list.forEach(s => {
+    list.filter(s => s.at == null).forEach(s => {
       let best = null;
       days.forEach(d => {
         const S = sched[d], run = runKinds[d];
         const n = S.length + (run ? 1 : 0);
-        if (n >= 2 || S.some(x => x.k === s.k)) return;
+        if (n >= MAX_DAY || S.some(x => x.k === s.k)) return;
         if (s.k === 'brick' && run) return;
         let cost = s.k === 'mobility' ? n * 6 : n * 30;
+        if (n >= 2) cost += 60; // 3ª atividade do dia só quando não há outro jeito
         if (s.hard && isHardDay(d)) cost += 40;
+        if (!s.focus && isHardDay(d)) cost += 10; // complementar prefere dia leve do foco
         [(d + 6) % 7, (d + 1) % 7].forEach(nb => {
           if (s.hard && isHardDay(nb)) cost += 12;
           if ((sched[nb] || []).some(x => x.k === s.k)) cost += 8;
@@ -352,13 +370,14 @@ O número de séries e repetições de cada semana está na linha em itálico ab
       if (s.k === 'run' && !goal && runEvent) goal = `${km(o.distanceKm)} km em ${fmtTime(o.goalSec)}`;
       const pw = s.k === 'tri' ? [n('swim') && `${n('swim')} natação`, n('bike') && `${n('bike')} bike`, n('run') && `${n('run')} corrida`, n('brick') && `${n('brick')} transição`].filter(Boolean).join(' + ') || '—'
         : s.k === 'other' ? String(n('other')) : String(n(s.k));
-      return `| ${s.label} | ${s.focus ? 'Foco' : 'Complementar'}${s.k === event ? ' · prova principal' : ''} | ${(goal || '—').replace(/\|/g, '/')} | ${pw} |`;
+      const dias = s.days && s.days.length ? s.days.map(d => WD[(d + 1) % 7].toLowerCase()).join(', ') : 'automáticos';
+      return `| ${s.label} | ${s.focus ? 'Foco' : 'Complementar'}${s.k === event ? ' · prova principal' : ''} | ${(goal || '—').replace(/\|/g, '/')} | ${pw} | ${dias} |`;
     };
     const left = [...new Set(HC.dropped.concat(TPL.dropped))].map(k => k === 'brick' ? 'transição' : k === 'other' ? ((sports.find(s => s.k === 'other') || {}).name || 'outra') : SPORTS[k].label.toLowerCase());
     const tplRows = chosen.map(d => {
       const S = TPL.sched[d] || [];
       const a = [runKindsAt[d] ? RUN_KIND[runKindsAt[d]] : null, ...S.map(sessName)].filter(Boolean);
-      return `| ${WDL[(d + 1) % 7]} | ${a[0] || 'Descanso'} | ${a[1] || '—'} |`;
+      return `| ${WDL[(d + 1) % 7]} | ${a[0] || 'Descanso'} | ${a[1] || '—'} | ${a[2] || '—'} |`;
     });
     const restDays = [0, 1, 2, 3, 4, 5, 6].filter(d => !chosen.includes(d)).map(d => WDL[(d + 1) % 7]);
     const focusNames = sports.filter(s => s.focus).map(s => s.label.toLowerCase());
@@ -373,21 +392,21 @@ ${raceLine}
 
 ## Modalidades e metas
 
-| Modalidade | Prioridade | Meta | Por semana |
-|---|---|---|---|
+| Modalidade | Prioridade | Meta | Por semana | Dias |
+|---|---|---|---|---|
 ${sports.map(rowFor).join('\n')}
 
 ## Resumo
 
-- **Dias de treino:** ${chosen.length} por semana (${chosen.map(d => WDL[(d + 1) % 7]).join(', ')})${restDays.length ? `; descanso ${listPt(restDays)}` : ''}. Até 2 treinos no mesmo dia quando precisa, e os treinos fortes ficam em dias separados sempre que dá.
-- **Foco:** ${listPt(focusNames)}. As modalidades de foco ganham mais sessões e os treinos mais importantes; as complementares mantêm a forma sem roubar recuperação.
+- **Dias de treino:** ${chosen.length} por semana (${chosen.map(d => WDL[(d + 1) % 7]).join(', ')})${restDays.length ? `; descanso ${listPt(restDays)}` : ''}. No máximo 3 atividades no mesmo dia, e os treinos fortes ficam em dias separados sempre que dá.
+- **Foco:** ${listPt(focusNames)}. As modalidades com meta são o foco e ganham mais sessões e os treinos mais importantes; as sem meta são complementares, com treinos leves encaixados em volta do foco.
 - **${evName}:** ${WDL[D(o.race).getUTCDay()]}, ${dmy(o.race)}. A última semana é de polimento: tudo fica mais curto e leve.
 - **Fases:** base, construção e específica, com uma semana leve a cada 4.
 ${runDays ? `- **Corrida:** VDOT ${curV.toFixed(1).replace('.', ',')} hoje${runEvent ? `, que prevê ${fmtTime(predicted)} nos ${km(o.distanceKm)} km; meta VDOT ${goalV.toFixed(1).replace('.', ',')}` : ''}. Cerca de 80% do volume é leve.\n` : ''}${testWeek ? `- **Teste de corrida:** no fim de semana da semana ${testWeek}. Se o resultado vier diferente do previsto, gere o plano de novo a partir dele.\n` : ''}${left.length ? `- **Não coube nos dias escolhidos:** ${listPt(left)}. Adicione um dia de treino para incluir.\n` : ''}
 ### Rotina-modelo da semana
 
-| Dia | Treino 1 | Treino 2 |
-|---|---|---|
+| Dia | Treino 1 | Treino 2 | Treino 3 |
+|---|---|---|---|
 ${tplRows.join('\n')}
 ${runDays ? `
 | Ritmo | Hoje | Na meta |
@@ -396,7 +415,7 @@ ${runDays ? `
 | Limiar | ${fmtPace(P0.threshold)}/km | ${fmtPace(PG.threshold)}/km |
 | Intervalado | ${fmtPace(P0.interval)}/km | ${fmtPace(PG.interval)}/km |
 ` : ''}
-Todo treino tem aquecimento de 10' e desaquecimento de 5–10'. "L" = leve. Em dia com 2 treinos, faça o principal primeiro ou separe por algumas horas.
+Todo treino tem aquecimento de 10' e desaquecimento de 5–10'. "L" = leve. Em dia com mais de um treino, faça o principal primeiro ou separe por algumas horas.
 
 ## Cronograma
 
@@ -428,9 +447,13 @@ ${gymOn ? GYM_MD : ''}`;
     if (o.level === 'pausa') curV *= 0.97;
     let chosen = [...new Set((o.trainWeekdays || o.runWeekdays || []).map(Number).filter(d => d >= 0 && d <= 6))].sort((a, b) => a - b);
     if (hybrid && (chosen.length < 2 || chosen.length > 6)) chosen = [0, 2, 4, 6];
+    // Dias fixos de cada modalidade também viram dias de treino.
+    if (hybrid) chosen = [...new Set(chosen.concat(...sports.map(s => s.days)))].sort((a, b) => a - b);
     // Semana híbrida: quantas sessões de cada modalidade e em quais dias.
     const HC = hybrid ? weeklyCounts(sports, chosen.length, o.level) : null;
-    const runPick = hybrid ? pickRunDays(chosen, HC.counts.run || 0) : null;
+    const runSp = hybrid ? sports.find(s => s.k === 'run' && s.days.length) : null;
+    const busy = d => hybrid ? sports.filter(s => s.k !== 'run' && s.days.includes(d)).length : 0;
+    const runPick = !hybrid ? null : runSp ? runSp.days.slice(0, 6) : pickRunDays(chosen.filter(d => busy(d) < 3), HC.counts.run || 0);
     const custom = !hybrid && chosen.length >= 2 && chosen.length <= 6;
     const runDays = hybrid ? runPick.length : custom ? chosen.length : Math.min(5, Math.max(3, o.runDays || 4));
     const beginner = o.level === 'iniciante', returning = o.level === 'pausa';
@@ -477,6 +500,8 @@ ${gymOn ? GYM_MD : ''}`;
     }).filter(Boolean);
     const crossText = (c, lvl, short) => !c ? 'Descanso' : `${c.ico} ${short ? c.leve.split(',')[0] + ', 30 min' : c[lvl]}`;
 
+    // Corrida sem meta (complementar): só corridas leves, sem intervalado nem limiar.
+    if (hybrid && !runEvent && !runFocus) { layout.X = layout.X.concat([layout.I, layout.T].filter(d => d != null)); layout.I = null; layout.T = null; }
     const gymOn = hybrid ? !!HC.counts.gym : !!o.gym;
     const runKindsAt = {};
     if (layout.I != null) runKindsAt[layout.I] = 'I'; if (layout.T != null) runKindsAt[layout.T] = 'T'; if (layout.E != null) runKindsAt[layout.E] = 'E'; layout.X.forEach(d => { runKindsAt[d] = 'X'; }); if (layout.L != null) runKindsAt[layout.L] = 'L';
@@ -575,22 +600,23 @@ ${gymOn ? GYM_MD : ''}`;
         if (w === taper && g && (D(o.race) - D(date)) / DAY <= 3) g = null;
         let gymCell = g ? `**${g}**` : '—';
         if (hybrid) {
-          // Outras modalidades do dia: no máximo 2 treinos; a corrida fica na coluna principal.
+          // Outras modalidades do dia: no máximo 3 atividades; a corrida fica na coluna principal.
           const toRace = (D(o.race) - D(date)) / DAY;
           let S = date === o.race ? [] : (TPL.sched[d] || []).slice();
           if (w === taper) S = S.filter(s => toRace >= (s.hard ? 4 : 2) && !(s.k === 'gym' && toRace <= 3));
           const pk = w === taper ? 'light' : phaseKey(ph);
           const gymS = S.find(s => s.k === 'gym'), texts = S.filter(s => s.k !== 'gym').map(s => sessText(s, pk, w));
           const runOn = k !== 'race' && rua && !/^Descanso/.test(rua);
-          let second = null;
+          // Até 3 atividades: a principal na 2ª coluna; as outras na 4ª, separadas por <br> (a musculação vai pela letra).
+          let more = [];
           if (k === 'race') { /* dia da prova: só a prova */ }
-          else if (runOn) second = texts[0] || null;
-          else if (gymS && S.every(s => s.k === 'gym' || s.k === 'mobility')) { rua = sessText(gymS); second = texts[0] || null; est = ''; }
-          else { rua = texts[0] || (gymS ? sessText(gymS) : rua || 'Descanso'); second = texts[1] || null; est = ''; }
+          else if (runOn) more = texts;
+          else if (gymS && S.every(s => s.k === 'gym' || s.k === 'mobility')) { rua = sessText(gymS); more = texts; est = ''; }
+          else { rua = texts[0] || (gymS ? sessText(gymS) : rua || 'Descanso'); more = texts.slice(1); est = ''; }
           if (runOn) wc.run = (wc.run || 0) + 1;
-          S.forEach(s => { wc[s.k] = (wc[s.k] || 0) + 1; });
-          // Musculação como treino principal: a letra já vai na coluna principal e a 4ª fica para o 2º treino.
-          gymCell = gymS && !/Musculação/.test(rua) ? `**${gymS.letter}**` : second || '—';
+          if (k !== 'race') S.forEach(s => { wc[s.k] = (wc[s.k] || 0) + 1; });
+          const items = (gymS && k !== 'race' && !/Musculação/.test(rua) ? [`**${gymS.letter}**`] : []).concat(more);
+          gymCell = items.join('<br>') || '—';
         }
         rows.push(`| ${key ? `**${label}**` : label} | ${rua} | ${est} | ${gymCell} |`);
       }

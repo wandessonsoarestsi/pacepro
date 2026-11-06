@@ -106,7 +106,8 @@
         const c = cells(line);
         if (c.every(x => /^:?-+:?$/.test(x)) || /^modalidade$/i.test(clean(c[0]))) continue;
         const pri = clean(c[1] || '');
-        out.sports.push({ k: sportKey(c[0]), label: clean(c[0]), focus: /foco/i.test(pri), event: /prova principal/i.test(pri), goal: /^[—-]?$/.test(clean(c[2] || '')) ? '' : clean(c[2]), perWeek: clean(c[3] || '') });
+        out.sports.push({ k: sportKey(c[0]), label: clean(c[0]), focus: /foco/i.test(pri), event: /prova principal/i.test(pri), goal: /^[—-]?$/.test(clean(c[2] || '')) ? '' : clean(c[2]), perWeek: clean(c[3] || ''),
+          days: clean(c[4] || '').toLowerCase().split(/,\s*/).map(x => ({ seg: 0, ter: 1, qua: 2, qui: 3, sex: 4, 'sáb': 5, sab: 5, dom: 6 })[x]).filter(x => x != null) });
         continue;
       }
       const g = /^#{2,4}\s+(?:💪\s*)?([A-E])\s*[—–-]\s*(.+)$/.exec(line);
@@ -137,7 +138,10 @@
       const date = `${year}-${pad(mon)}-${pad(day)}`;
       const rua = c[1] || '', esteira = c[2] || '', musc = c[3] || '';
       const type = classify(rua);
-      const gm = /\*\*([A-E])\b|^\s*([A-E])\b/.exec(musc);
+      // Plano híbrido: a 4ª coluna pode ter a letra da musculação e outros treinos do dia, separados por <br>.
+      const parts = twoCol ? musc.split(/<br\s*\/?>/i).map(x => x.trim()).filter(x => x && !/^[—-]$/.test(clean(x))) : [musc];
+      const gmPart = twoCol ? parts.find(x => /^\**\s*[A-E]\s*\**$/.test(x)) : null;
+      const gm = twoCol ? (gmPart ? /([A-E])/.exec(gmPart) : null) : /\*\*([A-E])\b|^\s*([A-E])\b/.exec(musc);
       const gmMain = type === 'gym' ? /Muscula[cç][aã]o\s+\**([A-E])\b/i.exec(rua) : null;
       const gymLetter = gm ? (gm[1] || gm[2]) : gmMain ? gmMain[1] : null;
       const d = {
@@ -148,11 +152,12 @@
       };
       if (['swim', 'bike', 'mobility', 'cross', 'hyrox', 'crossfit', 'brick', 'event'].includes(type)) d.title = sessionTitle(type, rua);
       if (type === 'rest') d.title = 'Descanso';
-      // Plano híbrido: a 4ª coluna é o 2º treino do dia (letra da musculação ou outra sessão).
-      if (twoCol && !gm && !/^[—-]?$/.test(clean(musc))) {
-        const t2 = classify(musc);
-        if (t2 !== 'rest') d.second = { type: t2, title: sessionTitle(t2, musc), rua: clean(musc) };
-        d.gymText = '';
+      if (twoCol) {
+        d.seconds = parts.filter(x => x !== gmPart).map(x => { const t2 = classify(x); return t2 === 'rest' ? null : { type: t2, title: sessionTitle(t2, x), rua: clean(x) }; }).filter(Boolean);
+        d.second = d.seconds[0] || null;
+        if (!d.seconds.length) delete d.seconds;
+        if (!d.second) delete d.second;
+        d.gymText = d.gym || '';
       }
       week.days.push(d); out.days.push(d);
     }

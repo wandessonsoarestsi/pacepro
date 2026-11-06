@@ -42,7 +42,7 @@
     const st = { stats: true, bg: 'map', fmt: 'feed', moments: !!d.moments.length, ghost: !!d.ghost, compare: !!d.compare, predict: !!d.predict };
     const close = () => { closed = true; try { map && map.remove(); } catch (e) {} box.remove(); document.body.classList.remove('noscroll'); };
     $('.vs-x').onclick = close;
-    const font = (w, s) => `${w} ${s}px Figtree, -apple-system, "Segoe UI", Roboto, sans-serif`;
+    const font = (w, s) => `${w} ${s}px Geist, -apple-system, "Segoe UI", Roboto, sans-serif`;
     const busy = on => { $('.vs-load').hidden = !on; };
 
     const n = d.lat.length, total = d.dist[n - 1];
@@ -253,7 +253,7 @@
       const my = ++job; busy(true);
       H = st.fmt === 'story' ? 1920 : 1350;
       cv.width = W; cv.height = H; $('.is-stage').style.aspectRatio = `${W}/${H}`;
-      try { await document.fonts.load('800 40px Figtree'); } catch (e) {}
+      try { await document.fonts.load('800 40px Geist'); } catch (e) {}
       const ic = await loadIcon();
       const B = blocks(), gap = 20, story = st.fmt === 'story';
       const clear = st.bg === 'clear';

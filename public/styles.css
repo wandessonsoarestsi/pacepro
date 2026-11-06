@@ -582,8 +582,8 @@ details.rpast{margin-top:14px}
 details.rpast summary{font-weight:600;color:var(--c1);padding:8px 0;list-style:none;display:inline-flex;align-items:center;gap:10px}
 details.rpast summary::-webkit-details-marker{display:none}
 /* Lista ou calendário */
-.rview{display:inline-flex;gap:2px;padding:3px;border-radius:var(--r-pill);background:var(--sunk);margin:14px 0 4px}
-.rview button{display:inline-flex;align-items:center;gap:6px;border:0;background:none;color:var(--muted);font:inherit;font-size:var(--fs-sm);font-weight:600;padding:7px 14px;border-radius:var(--r-pill);cursor:pointer;min-height:36px;transition:background var(--t-fast),color var(--t-fast)}
+.rview{display:flex;width:fit-content;align-self:flex-start;gap:2px;padding:3px;border-radius:var(--r-pill);background:var(--sunk);margin:14px 0 4px}
+.rview button{display:inline-flex;align-items:center;gap:6px;border:0;background:none;color:var(--muted);font:inherit;font-size:var(--fs-sm);font-weight:600;padding:6px 12px;border-radius:var(--r-pill);cursor:pointer;min-height:32px;transition:background var(--t-fast),color var(--t-fast)}
 .rview button svg,.rcal-nav svg,.rkit-ico svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .rview button[aria-pressed="true"]{background:var(--btn);color:var(--btn-fg)}
 .rcal-nav{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:14px 0 8px}

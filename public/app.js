@@ -2403,6 +2403,7 @@
   // Visão da aba Provas: lista ou calendário do mês (a escolha fica no aparelho).
   let raceView = store.get('pacepro.raceView', 'lista') === 'cal' ? 'cal' : 'lista', raceMonth = null, raceDay = null, raceNewDate = '';
   const monKey = (y, m) => `${y}-${pad(m + 1)}`;
+  const kitRow = r => `<div class="rkit"><span class="rkit-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 8h12l-1 12H7L6 8zM9 8a3 3 0 0 1 6 0"/></svg></span><span class="rr-txt"><span class="t">Retirada do kit</span><span class="s">${esc(r.name)}${r.kitPlace ? ' · ' + esc(r.kitPlace) : ''}</span><span class="s when">${WD[D(r.kitDate).getDay()]} ${ddmm(r.kitDate)}</span></span><button class="btn ghost sm" type="button" data-rgo="${esc(r.id)}" data-rgod="${esc(r.date)}">Ver prova</button></div>`;
   function raceCalHtml(list) {
     if (!raceMonth) { const nx = list.find(r => r.date >= today); raceMonth = (nx ? nx.date : today).slice(0, 7); }
     const y = +raceMonth.slice(0, 4), m = +raceMonth.slice(5) - 1;
@@ -2427,11 +2428,19 @@
       const dd = D(raceDay), e = byDay[raceDay] || { race: [], kit: [] };
       h += `<div class="rcal-day"><div class="rmonth">${WDL[dd.getDay()]}, ${dd.getDate()} de ${MONL[dd.getMonth()]}</div>`;
       h += e.race.map(raceRow).join('');
-      h += e.kit.map(r => `<div class="rkit"><span class="rkit-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 8h12l-1 12H7L6 8zM9 8a3 3 0 0 1 6 0"/></svg></span><span class="rr-txt"><span class="t">Retirada do kit</span><span class="s">${esc(r.name)}${r.kitPlace ? ' · ' + esc(r.kitPlace) : ''}</span></span><button class="btn ghost sm" type="button" data-rgo="${esc(r.id)}" data-rgod="${esc(r.date)}">Ver prova</button></div>`).join('');
+      h += e.kit.map(kitRow).join('');
       if (!e.race.length && !e.kit.length) h += `<p class="muted small">Nada marcado neste dia.</p>`;
-      if (raceDay >= today) h += `<div class="row-actions"><button class="btn ghost sm" type="button" id="raceAddDay">+ Prova neste dia</button></div>`;
+      h += `<div class="row-actions">${raceDay >= today ? '<button class="btn ghost sm" type="button" id="raceAddDay">+ Prova neste dia</button>' : ''}<button class="btn ghost sm" type="button" id="raceAllMonth">Ver o mês todo</button></div>`;
       h += `</div>`;
-    } else h += `<p class="muted small rcal-hint">Toque num dia para ver a prova ou marcar uma nova.</p>`;
+    } else {
+      // Sem dia escolhido: mostra as provas e retiradas de kit do mês, em ordem de data.
+      const items = [];
+      list.forEach(r => { if (r.date.startsWith(raceMonth)) items.push([r.date, 1, r]); if (r.kitDate && r.kitDate.startsWith(raceMonth)) items.push([r.kitDate, 0, r]); });
+      items.sort((a, b) => a[0].localeCompare(b[0]) || a[1] - b[1]);
+      h += `<div class="rcal-day"><div class="rmonth">Em ${MONL[m]}</div>`;
+      h += items.length ? items.map(([, k, r]) => k ? raceRow(r) : kitRow(r)).join('') : `<p class="muted small">Nenhuma prova neste mês.</p>`;
+      h += `<p class="muted small rcal-hint">Toque num dia para ver só aquele dia ou marcar uma prova nova.</p></div>`;
+    }
     return h;
   }
   function renderRaces() {
@@ -2455,6 +2464,7 @@
       const rs = raceDay ? list.filter(r => r.date === raceDay) : []; raceOpen = rs.length === 1 ? rs[0].id : null; renderRaces();
     });
     box.querySelectorAll('[data-rgo]').forEach(b => b.onclick = () => { raceDay = b.dataset.rgod; raceMonth = raceDay.slice(0, 7); raceOpen = b.dataset.rgo; renderRaces(); });
+    if ($('raceAllMonth')) $('raceAllMonth').onclick = () => { raceDay = null; raceOpen = null; renderRaces(); };
     if ($('raceAddDay')) $('raceAddDay').onclick = () => { raceEdit = null; raceNewDate = raceDay; renderRaceForm(true); };
     box.querySelectorAll('[data-rid]').forEach(b => b.onclick = () => { raceOpen = raceOpen === b.dataset.rid ? null : b.dataset.rid; renderRaces(); });
     const find = id => list.find(r => r.id === id);

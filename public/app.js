@@ -307,7 +307,7 @@
       title = selected === today ? 'Início' : selected === addDays(today, 1) ? 'Amanhã' : selected === addDays(today, -1) ? 'Ontem' : WDL[d.getDay()];
       const day = dayAt(selected);
       sub = `${WDL[d.getDay()]}, ${d.getDate()} de ${MON[d.getMonth()]}${day && day.week ? ` · semana ${day.week} de ${plan.weeks.length}` : day && day.recovery ? ` · recuperação, dia ${day.recovery} de 7` : ''}`;
-    } else if (view === 'plano' && plan) sub = `Para ${planRaceLabel()} em ${ddmm(raceISO())} · ${plan.weeks.length} semanas`;
+    } else if (view === 'plano' && plan) sub = `${planSource === 'exemplo' ? 'Plano de exemplo · ' : ''}Para ${planRaceLabel()} em ${ddmm(raceISO())} · ${plan.weeks.length} semanas`;
     else if (view === 'progresso' && plan) { const n = Math.max(0, Math.ceil((new Date(raceISO() + 'T05:30:00-03:00') - Date.now()) / 864e5)); sub = n ? `${n} dias para a prova` : 'Dia de prova'; }
     else if (view === 'provas') { const n = allRaces().filter(r => r.date >= today).length; sub = n ? `${n} prova${n > 1 ? 's' : ''} pela frente` : 'Seu calendário de provas'; }
     else if (view === 'ajustes') sub = strava.connected ? 'Strava conectado' : 'Strava, plano e preferências';
@@ -947,6 +947,7 @@
       const p = P.parse(text);
       if (!p.days.length) throw new Error('Não encontrei nenhum dia de treino. Confira se as tabelas têm a coluna Data com "Seg 09/11", "Ter 10/11"...');
       if (!p.race) throw new Error('Não encontrei a data da prova. Inclua uma linha como "Prova: domingo, 13/12/2026".');
+      resetPlanExtras();
       setPlanMd(text, 'importado');
       genOpen = false; renderSettings();
       msg.className = 'msg good'; msg.textContent = `Plano importado: ${p.weeks.length} semanas, ${p.days.length} dias, prova em ${ddmm(p.race)}.`;
@@ -963,7 +964,7 @@
     setPlanMd(null, ''); saveNow(); track('plano-apagado');
     const msg = $('planMsg'); msg.hidden = false; msg.className = 'msg'; msg.textContent = 'Plano apagado.';
   };
-  $('planReset').onclick = async () => { try { setPlanMd(await examplePlanMd(), 'exemplo'); const msg = $('planMsg'); msg.hidden = false; msg.className = 'msg'; msg.textContent = 'Plano de exemplo carregado.'; } catch (e) { showToast('Não consegui carregar o exemplo.', true); } };
+  $('planReset').onclick = async () => { try { resetPlanExtras(); setPlanMd(await examplePlanMd(), 'exemplo'); const msg = $('planMsg'); msg.hidden = false; msg.className = 'msg'; msg.textContent = 'Plano de exemplo carregado.'; } catch (e) { showToast('Não consegui carregar o exemplo.', true); } };
   let clearArmed = false;
   $('clearDone').onclick = () => {
     const msg = $('clearMsg');
@@ -973,42 +974,64 @@
 
 
   /* ---------- Gerar plano ---------- */
-  let generated = null;
+  let prevPlan = null;
+  // Remarcações, treinos pulados, atividades trocadas e teste valem só para o plano em que foram feitos.
+  const resetPlanExtras = () => { extra = { ...extra, moves: {}, skips: {}, soft: {}, acts: null, test: null }; };
+  const genDays = () => [...document.querySelectorAll('#gDays [data-wd]:checked')].map(b => +b.dataset.wd);
   // Aceita 30:00, 1:59:00, 30.00 ou só 30 (minutos).
   const toSec = s => { const t = String(s || '').trim().replace(/[.,h]/g, ':'); if (/^\d{1,3}$/.test(t)) return +t * 60 || null; const p = t.split(':').map(Number); if (p.some(isNaN) || p.length < 2 || p.length > 3) return null; return p.length === 3 ? p[0] * 3600 + p[1] * 60 + p[2] : p[0] * 60 + p[1]; };
   (function initGen() {
     const f = $('genForm'); if (!f) return;
     $('gStart').value = addDays(today, 1);
+    // Dias de corrida: lembrados neste aparelho para o próximo plano.
+    const saved = store.get('pacepro.genDays', null);
+    if (Array.isArray(saved) && saved.length) document.querySelectorAll('#gDays [data-wd]').forEach(b => { b.checked = saved.includes(+b.dataset.wd); });
+    const dayHint = () => {
+      const n = genDays().length;
+      $('gDaysHint').textContent = n < 2 ? 'Escolha pelo menos 2 dias.' : n > 6 ? 'Deixe pelo menos 1 dia de descanso.' : `${n} corridas por semana. O longão fica no fim de semana quando der; os treinos fortes ficam separados.`;
+    };
+    document.querySelectorAll('#gDays [data-wd]').forEach(b => b.onchange = () => { store.set('pacepro.genDays', genDays()); dayHint(); });
+    dayHint();
     f.onsubmit = e => {
       e.preventDefault();
       const msg = $('genMsg'); msg.hidden = false; $('genActions').hidden = true;
-      const goalSec = toSec($('gGoal').value), race = $('gRace').value, start = $('gStart').value;
+      let goalSec = toSec($('gGoal').value); const race = $('gRace').value, start = $('gStart').value;
+      // "2:27" numa meia maratona é 2h27, não 2 min 27 s: se o ritmo ficar impossível (abaixo de 2'30"/km), lê como horas e minutos.
+      if (goalSec && goalSec / +$('gDist').value < 150 && $('gGoal').value.trim().split(/[:.,h]/).length === 2) goalSec *= 60;
       if (!race || !start) { msg.className = 'msg bad'; msg.textContent = 'Preencha a data da prova e o início do plano.'; return; }
       if (race <= start) { msg.className = 'msg bad'; msg.textContent = 'A prova precisa ser depois do início do plano.'; return; }
       if ((D(race) - D(start)) / 864e5 > 168) { msg.className = 'msg bad'; msg.textContent = 'Escolha um período de até 24 semanas.'; return; }
       if (!goalSec) { msg.className = 'msg bad'; msg.textContent = 'Escreva o tempo-objetivo como 30:00 ou 1:55:00.'; return; }
+      const wd = genDays();
+      if (wd.length < 2 || wd.length > 6) { msg.className = 'msg bad'; msg.textContent = 'Escolha de 2 a 6 dias de corrida na semana.'; return; }
       let cur = toSec($('gCur').value);
       if ($('gCur').value.trim() && !cur) { msg.className = 'msg bad'; msg.textContent = 'Escreva o tempo atual nos 5 km como 42:30.'; return; }
       if (!cur) { const est = estimateAt(today); cur = est ? est.sec * (5 / distKm()) : null; }
       try {
-        const md = window.PlanGenerator.generate({ start, race, distanceKm: +$('gDist').value, goalSec, currentSec5k: cur, runDays: +$('gDays').value, cross: [...document.querySelectorAll('[data-cross]:checked')].map(b => b.dataset.cross).concat($('gOther').value.trim() ? [{ name: $('gOther').value.trim() }] : []), gym: $('gGym').checked, level: $('gLevel').value });
+        const md = window.PlanGenerator.generate({ start, race, distanceKm: +$('gDist').value, goalSec, currentSec5k: cur, runWeekdays: genDays(), cross: [...document.querySelectorAll('[data-cross]:checked')].map(b => b.dataset.cross).concat($('gOther').value.trim() ? [{ name: $('gOther').value.trim() }] : []), gym: $('gGym').checked, level: $('gLevel').value });
         const p = P.parse(md);
         if (!p.days.length) throw new Error('Não consegui montar o plano com esses dados.');
-        generated = md;
+        // O plano novo entra em uso na hora (antes ficava esperando o botão "Usar este plano" e o plano antigo seguia na tela).
+        prevPlan = { md: planMd, source: planSource, extra: JSON.parse(JSON.stringify(extra)), base: done._base };
+        const curTyped = toSec($('gCur').value);
+        if (curTyped) done._base = { date: today, sec: curTyped };
+        resetPlanExtras();
+        setPlanMd(md, 'gerado no app'); track('plano-gerado');
         msg.className = 'msg good';
-        msg.textContent = `Plano pronto: ${p.weeks.length} semanas até ${ddmm(p.race)}.${cur ? '' : ' Sem corridas registradas, usei uma estimativa a partir da meta; informe seu tempo atual para ajustar.'}`;
+        msg.textContent = `Plano novo em uso: ${p.weeks.length} semanas até ${ddmm(p.race)}.${cur ? '' : ' Sem corridas registradas, usei uma estimativa a partir da meta; informe seu tempo atual para ajustar.'}`;
         const a = $('gDownload'); if (a.dataset.url) URL.revokeObjectURL(a.dataset.url);
         a.dataset.url = URL.createObjectURL(new Blob([md], { type: 'text/markdown' })); a.href = a.dataset.url;
+        $('gUndo').hidden = !prevPlan.md;
         $('genActions').hidden = false;
+        showToast('Plano novo em uso.');
       } catch (err) { msg.className = 'msg bad'; msg.textContent = err.message; }
     };
-    $('gUse').onclick = () => {
-      if (!generated) return;
-      const curTyped = toSec($('gCur').value);
-      if (curTyped) done._base = { date: today, sec: curTyped };
-      setPlanMd(generated, 'gerado no app'); track('plano-gerado');
-      $('genActions').hidden = true;
-      genOpen = false; $('genMsg').hidden = true; location.hash = 'hoje'; showToast('Plano novo em uso.');
+    $('gSee').onclick = () => { genOpen = false; $('genMsg').hidden = true; $('genActions').hidden = true; location.hash = 'plano'; };
+    $('gUndo').onclick = () => {
+      if (!prevPlan) return;
+      extra = prevPlan.extra; if (prevPlan.base) done._base = prevPlan.base; else delete done._base;
+      setPlanMd(prevPlan.md, prevPlan.source); prevPlan = null;
+      $('genActions').hidden = true; const msg = $('genMsg'); msg.className = 'msg'; msg.textContent = 'Voltei para o plano anterior.';
     };
   })();
 
@@ -1935,7 +1958,7 @@
       if (raceEdit === 'plan' && plan && date !== plan.race) extra.hidePlanRace = plan.race;
       extra.races = (extra.races || []).filter(x => x.id !== item.id).concat(item);
       raceEdit = null; raceOpen = item.id; persist(); renderRaceForm(false); renderAll();
-      if (!plan) { prefillGen(item.dist, item.goal, item.date); showToast(item.goal ? 'Prova salva. Confira o plano e toque em "Usar este plano".' : 'Prova salva. Agora escreva a sua meta para gerar o plano.'); if (!item.goal) setTimeout(() => $('gGoal').focus(), 300); }
+      if (!plan) { prefillGen(item.dist, item.goal, item.date); showToast(item.goal ? 'Prova salva. Confira os dados e toque em "Gerar plano".' : 'Prova salva. Agora escreva a sua meta para gerar o plano.'); if (!item.goal) setTimeout(() => $('gGoal').focus(), 300); }
       else showToast('Prova salva.');
     };
   }
@@ -2080,7 +2103,7 @@
       };
     });
   }
-  document.querySelectorAll('[data-example]').forEach(b => b.onclick = async () => { try { setPlanMd(await examplePlanMd(), 'exemplo'); } catch (e) { showToast('Não consegui carregar o exemplo.', true); } });
+  document.querySelectorAll('[data-example]').forEach(b => b.onclick = async () => { try { resetPlanExtras(); setPlanMd(await examplePlanMd(), 'exemplo'); } catch (e) { showToast('Não consegui carregar o exemplo.', true); } });
   $('bkSave').onclick = () => {
     const blob = new Blob([JSON.stringify({ app: 'pacepro', v: 2, plan_md: planMd, done, extra, runs }, null, 1)], { type: 'application/json' });
     const el = document.createElement('a'); el.href = URL.createObjectURL(blob); el.download = `pacepro-backup-${today}.json`;

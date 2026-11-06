@@ -249,6 +249,12 @@ input[type=checkbox]{width:20px;height:20px;accent-color:var(--c1);margin:0;flex
 .checks label{flex-direction:row;align-items:center;gap:8px;color:var(--fg);font-weight:500;font-size:15px;min-height:32px;cursor:pointer}
 fieldset.xtra{border:1px solid var(--line);border-radius:var(--r-md);padding:12px 14px 14px;margin:0;display:flex;flex-direction:column;gap:12px;min-width:0}
 fieldset.xtra legend{font-size:var(--fs-sm);font-weight:550;color:var(--fg2);padding:0 4px}
+.daypick{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+.daypick label{position:relative;display:block;cursor:pointer;min-width:0}
+.daypick input{position:absolute;opacity:0;width:1px;height:1px}
+.daypick span{display:flex;align-items:center;justify-content:center;min-height:40px;border:1px solid var(--line2);border-radius:var(--r-sm);font-size:var(--fs-sm);font-weight:550;color:var(--fg2);background:var(--card);transition:background var(--t-fast),color var(--t-fast),border-color var(--t-fast)}
+.daypick input:checked+span{background:var(--c1);border-color:var(--c1);color:var(--c1-fg)}
+.daypick input:focus-visible+span{box-shadow:var(--ring)}
 .wform{display:flex;gap:8px}
 .wform input,.wform select{flex:1}
 .gen{display:flex;flex-direction:column;gap:12px;border-top:1px solid var(--line);padding-top:16px;scroll-margin-top:110px}

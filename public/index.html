@@ -3,21 +3,20 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#F7F7F5" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#0C0E10" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#0A0B0D">
 <title>PacePro</title>
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="manifest" href="/manifest.webmanifest">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="PacePro">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&display=swap">
 <link rel="stylesheet" href="/styles.css">
-<script>try{var t=localStorage.getItem('sub30.theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
+<script>try{var t=localStorage.getItem('sub30.theme');if(t==='light'||t==='system')document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
 <!-- Contagem de uso (Vercel Web Analytics): sem cookies e sem dados pessoais. -->
 <script>window.va=window.va||function(){(window.vaq=window.vaq||[]).push(arguments)};</script>
 <script defer src="/_vercel/insights/script.js"></script>
@@ -267,9 +266,9 @@
         <div class="prow">
           <div><b>Aparência</b></div>
           <div class="pills sm" id="themePills" role="radiogroup" aria-label="Tema">
-            <button type="button" data-t="system">Auto</button>
-            <button type="button" data-t="light">Claro</button>
             <button type="button" data-t="dark">Escuro</button>
+            <button type="button" data-t="light">Claro</button>
+            <button type="button" data-t="system">Auto</button>
           </div>
         </div>
         <div class="prow col">

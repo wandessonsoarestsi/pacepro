@@ -1,8 +1,9 @@
-// Lembretes do dia, chamado uma vez por dia pelo Cron da Vercel (vercel.json, 10h UTC = 7h em Brasília).
+// Lembretes do dia: /api/push?a=cron, chamado uma vez por dia pelo Cron da Vercel (vercel.json, 10h UTC = 7h em Brasília).
+// Fica junto de /api/push para não passar do limite de 12 funções do plano grátis da Vercel.
 // Para cada aparelho inscrito: treino de hoje, contagem para a prova e treino-chave de ontem que ficou sem fazer.
 // Cada aparelho recebe no máximo uma rodada por dia, mesmo se o cron rodar mais vezes.
-const { db, dbConf, baseUrl } = require('../_lib');
-const P = require('../_push');
+const { db, dbConf, baseUrl } = require('./_lib');
+const P = require('./_push');
 
 const TZ = 'America/Fortaleza';
 const isoLocal = d => new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);

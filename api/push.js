@@ -1,9 +1,10 @@
 // Inscrição de um aparelho nas notificações.
 // GET: se está disponível e a chave pública. POST: inscreve ou atualiza ({ sub, prefs, days, race, done }).
-// POST ?a=test: manda uma notificação de teste. POST ?a=off ({ endpoint }): cancela.
+// GET ?a=cron: lembretes do dia (Cron da Vercel). POST ?a=test: manda uma notificação de teste. POST ?a=off ({ endpoint }): cancela.
 // O aparelho manda os próximos dias do plano (data, título e tipo) para os lembretes saírem sem o app aberto.
-const { dbConf, readCookie, open, baseUrl, fail, db } = require('../_lib');
-const P = require('../_push');
+const { dbConf, readCookie, open, baseUrl, fail, db } = require('./_lib');
+const P = require('./_push');
+const cron = require('./_cron');
 
 const PREFS = ['treino', 'prova', 'perdido', 'strava'];
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -26,6 +27,7 @@ function athleteOf(req) {
 }
 
 module.exports = async (req, res) => {
+  if (req.query && req.query.a === 'cron') return cron(req, res);
   res.setHeader('Cache-Control', 'no-store');
   try {
     if (!dbConf()) return res.json({ configured: false });

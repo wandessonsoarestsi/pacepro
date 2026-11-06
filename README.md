@@ -37,7 +37,7 @@ outro aparelho. A conexão com o Strava fica num cookie criptografado do navegad
   - `plan-parser.js` — lê planos em Markdown (gerados ou importados).
   - `analysis.js` — análise dos treinos e estimativa de tempo.
   - `plano.md` — plano de exemplo.
-- `api/` — funções do Vercel: integração com o Strava, login com Google (`auth/google.js`), dados da conta (`account.js`), notificações (`push/`, `_push.js`) e versão publicada.
+- `api/` — funções do Vercel: integração com o Strava, login com Google (`auth/google.js`), dados da conta (`account.js`), notificações (`push.js`, `_push.js`, `_cron.js`) e versão publicada.
 
 ## Configuração
 
@@ -79,7 +79,7 @@ Sem ele, o app consulta no máximo a cada 15 minutos. Precisa do banco de dados 
 
 ### 6. Notificações
 Funcionam sozinhas depois do passo 3 (banco de dados): o app cria as chaves de envio (VAPID) na primeira vez e
-guarda no banco. O Cron da Vercel (em `vercel.json`) chama `/api/push/cron` uma vez por dia, às 10h UTC (7h em Brasília).
+guarda no banco. O Cron da Vercel (em `vercel.json`) chama `/api/push?a=cron` uma vez por dia, às 10h UTC (7h em Brasília).
 O aviso de treino novo no Strava precisa do webhook (passo 5).
 - Recomendado: crie a variável `CRON_SECRET` com um texto aleatório e faça **Redeploy**. Assim só o Cron da Vercel consegue chamar os lembretes.
 - Opcional: para usar chaves próprias, crie `VAPID_PUBLIC_KEY` e `VAPID_PRIVATE_KEY` (ex.: `npx web-push generate-vapid-keys`).

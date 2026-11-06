@@ -28,6 +28,7 @@ outro aparelho. A conexão com o Strava fica num cookie criptografado do navegad
 - Calendário de provas (aba Provas), com exportação para a agenda (.ics) e plano montado para cada prova.
 - Conta com login do Google (opcional): os dados vão para a nuvem e sincronizam entre aparelhos. A versão mais nova ganha.
 - Aviso e botão de atualizar quando sai uma versão nova (`/api/version`).
+- Notificações (Ajustes → Notificações), cada uma pode ser desligada: treino do dia às 7h, contagem para a prova (30, 14, 7, 3 e 1 dia), treino-chave de ontem que ficou sem fazer e treino novo no Strava. No iPhone, só com o app instalado na tela de início (iOS 16.4 ou mais novo).
 
 ## Estrutura
 
@@ -36,7 +37,7 @@ outro aparelho. A conexão com o Strava fica num cookie criptografado do navegad
   - `plan-parser.js` — lê planos em Markdown (gerados ou importados).
   - `analysis.js` — análise dos treinos e estimativa de tempo.
   - `plano.md` — plano de exemplo.
-- `api/` — funções do Vercel: integração com o Strava, login com Google (`auth/google.js`), dados da conta (`account.js`) e versão publicada.
+- `api/` — funções do Vercel: integração com o Strava, login com Google (`auth/google.js`), dados da conta (`account.js`), notificações (`push/`, `_push.js`) e versão publicada.
 
 ## Configuração
 
@@ -75,6 +76,18 @@ Sem ele, o app consulta no máximo a cada 15 minutos. Precisa do banco de dados 
    ```
 3. A resposta traz um `id`. Crie a variável `STRAVA_SUBSCRIPTION_ID` com esse número e faça **Redeploy**.
    Assim o app ignora avisos que não vêm da sua inscrição.
+
+### 6. Notificações
+Funcionam sozinhas depois do passo 3 (banco de dados): o app cria as chaves de envio (VAPID) na primeira vez e
+guarda no banco. O Cron da Vercel (em `vercel.json`) chama `/api/push/cron` uma vez por dia, às 10h UTC (7h em Brasília).
+O aviso de treino novo no Strava precisa do webhook (passo 5).
+- Recomendado: crie a variável `CRON_SECRET` com um texto aleatório e faça **Redeploy**. Assim só o Cron da Vercel consegue chamar os lembretes.
+- Opcional: para usar chaves próprias, crie `VAPID_PUBLIC_KEY` e `VAPID_PRIVATE_KEY` (ex.: `npx web-push generate-vapid-keys`).
+  Trocar as chaves faz cada aparelho se inscrever de novo na próxima vez que abrir o app.
+
+O que fica no banco para cada aparelho inscrito (por até 45 dias sem abrir o app): o endereço de envio, as preferências,
+os próximos dias do plano (data, título, tipo), a próxima prova, os dias marcados como feitos e, se o Strava estiver
+conectado, só o número do atleta (para o aviso de treino novo). Nenhum dado de atividade do Strava.
 
 ## Regras do Strava
 

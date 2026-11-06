@@ -2014,7 +2014,7 @@
       const st = done[r.date], a = st && st.analysis, pd = plan && dayAt(r.date);
       const chip = a ? `<span class="chip ${a.status === 'ok' ? 'good' : a.status}">${a.status === 'ok' ? 'No alvo' : a.status === 'warn' ? 'Atenção' : 'Abaixo'}</span>` : '';
       const when = r.date === today ? 'hoje' : r.date === addDays(today, -1) ? 'ontem' : `${WD[D(r.date).getDay()]} ${ddmm(r.date)}`;
-      return `<button class="rc" type="button" data-rdate="${r.date}" data-sid="${esc(r.stravaId || '')}">${routeSvg(r.poly, 64, r.trainer)}<span class="rc-main"><span class="rc-top"><b>${esc(pd && pd.title && isRunType(pd.type) ? pd.title : r.name)}</b>${chip}</span><small class="muted">${when}${r.trainer ? ' · esteira' : ''}</small>` +
+      return `<button class="rc" type="button" data-rdate="${r.date}" data-sid="${esc(r.stravaId || '')}">${r.trainer ? treadSvg() : routeSvg(r.poly, 64)}<span class="rc-main"><span class="rc-top"><b>${esc(pd && pd.title && isRunType(pd.type) ? pd.title : r.name)}</b>${chip}</span><small class="muted">${when}${r.trainer ? ' · esteira' : ''}</small>` +
         `<span class="rc-m"><span><b>${r.km.toFixed(2).replace('.', ',')}</b> km</span><span><b>${A.fmtTime(r.sec)}</b></span><span><b>${A.fmtPace(r.sec / r.km)}</b>/km</span>${r.hr ? `<span><b>${r.hr}</b> bpm</span>` : ''}</span></span></button>`;
     }).join('') + `</div>`;
     bindGoto(box);

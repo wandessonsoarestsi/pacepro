@@ -29,7 +29,7 @@
       <div class="vs-actions">
         ${opt('stats', 'Dados da corrida', 'Distância, tempo, pace e FC média', true)}
         ${d.moments.length ? opt('moments', 'Momentos no mapa', 'Km mais rápido, pico, FC mais alta, subida e onde cansou', true) : ''}
-        ${d.ghost ? opt('ghost', 'Corredor fantasma', `Contra ${d.ghost.label} (${d.ghost.date})`, true) : ''}
+        ${d.ghost ? opt('ghost', 'Corredor fantasma', `O fantasma é você mesmo: ${d.ghost.label} (${d.ghost.date}). Mostra onde você ganhou ou perdeu tempo.`, true) : ''}
         ${d.compare ? opt('compare', 'Comparação', `Com o mesmo treino ${d.compare.when} (${d.compare.date})`, true) : ''}
         ${d.predict ? opt('predict', 'Previsão de prova', d.predict.big, true) : ''}
         <p class="vs-msg muted small">A arte da rota não mostra as ruas. O transparente fica por cima de uma foto no Instagram: o xadrez da prévia é só para ver o que é transparente.</p>

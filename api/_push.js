@@ -70,7 +70,7 @@ async function send(sub, msg, opts) {
       method: 'POST', signal: ctrl.signal,
       headers: {
         Authorization: vapidAuth(sub.endpoint, keys, subject), 'Content-Encoding': 'aes128gcm', 'Content-Type': 'application/octet-stream',
-        TTL: String((opts && opts.ttl) || 12 * 3600), Urgency: (opts && opts.urgency) || 'normal', ...(msg.tag ? { Topic: String(msg.tag).replace(/[^\w-]/g, '').slice(0, 32) } : {})
+        TTL: String((opts && opts.ttl) || 12 * 3600), Urgency: (opts && opts.urgency) || 'normal'
       },
       body: encrypt(sub, JSON.stringify(msg))
     });

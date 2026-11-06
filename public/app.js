@@ -341,7 +341,25 @@
     try { const j = await acctApi('/api/account'); acct = { ...acct, checked: true, configured: j.configured, user: j.user }; }
     catch (e) { acct = { ...acct, checked: true, configured: null, user: null, error: e.message }; }
   }
+  // Nome e foto de quem está logado, no topo de todas as abas.
+  function renderMe() {
+    const u = acct.user, el = $('meChip'); if (!el) return;
+    el.hidden = !u; if (!u) return;
+    const name = (u.name || u.email || '').trim(), first = name.split(/[\s@]/)[0];
+    $('meName').textContent = first;
+    el.setAttribute('aria-label', `Sua conta: ${name}`); el.title = name;
+    const ini = esc(name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?');
+    const pic = $('mePic');
+    if (/^https:\/\//.test(u.pic || '')) {
+      if (!pic.querySelector('img') || pic.dataset.src !== u.pic) {
+        pic.dataset.src = u.pic;
+        pic.innerHTML = `<img src="${esc(u.pic)}" alt="" referrerpolicy="no-referrer">`;
+        pic.querySelector('img').onerror = () => { pic.textContent = ini; };
+      }
+    } else { pic.dataset.src = ''; pic.innerHTML = ini; }
+  }
   function renderAcct() {
+    renderMe();
     const chip = $('acctChip'); if (!chip) return;
     const u = acct.user, m = syncMeta();
     const w = $('wAcct'); if (w) w.hidden = !!u || acct.configured !== true;

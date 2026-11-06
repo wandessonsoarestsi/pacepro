@@ -804,3 +804,7 @@ input,select,textarea{font-size:16px!important}
 .nitem.read .ndot{background:transparent}
 .nitem .ndel{flex:0 0 auto;width:32px;height:32px;font-size:18px}
 .inbox-empty{padding:24px 0 20px;text-align:center}
+/* Voltar para hoje: embaixo do título, para não apertar os botões do topo */
+.today-chip{align-self:flex-start;margin-top:6px;min-height:32px;padding:5px 14px;border:0;border-radius:var(--r-pill);background:var(--sunk);color:var(--fg);font:600 var(--fs-sm)/1.2 inherit;font-family:inherit;cursor:pointer}
+.today-chip:hover{background:color-mix(in srgb,var(--fg) 10%,var(--sunk))}
+.today-chip[hidden]{display:none}

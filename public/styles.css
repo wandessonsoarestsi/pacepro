@@ -556,6 +556,11 @@ details.rpast summary::-webkit-details-marker{display:none}
 .brand-ico{width:32px;height:32px;border-radius:var(--r-sm);display:grid;place-items:center;font-weight:700;font-size:15px}
 .brand-ico svg{width:18px;height:18px;fill:currentColor}
 .strava-ico{background:#FC5200;color:#fff}
+.google-ico{background:#fff;border:1px solid var(--line)}
+.google-ico svg,.btn.google svg{width:18px;height:18px}
+.btn.google{background:#fff;color:#1f1f1f;border:1px solid #747775;gap:10px}
+.btn.google:hover{background:#f2f2f2}
+.acct-pic{width:22px;height:22px;border-radius:50%;vertical-align:-6px;margin-right:6px}
 .seg-actions{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .act{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;border:1px solid var(--line);background:var(--card);border-radius:var(--r-md);padding:14px 6px;min-height:76px;font-size:var(--fs-sm);font-weight:600;cursor:pointer;text-align:center;color:var(--fg);transition:border-color var(--t-fast),background var(--t-fast),transform var(--t-fast) var(--ease)}
 .act:hover{border-color:var(--line2);background:var(--sunk)}

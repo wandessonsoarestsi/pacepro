@@ -1,8 +1,9 @@
 # PacePro
 
 Plano de corrida pessoal: treino do dia detalhado, contagem regressiva, tempo estimado para a prova
-e análise de cada treino com os dados do Strava. Modo claro e escuro. Sem login: os dados ficam no
-aparelho (com backup em Ajustes) e a conexão com o Strava fica num cookie criptografado do navegador.
+e análise de cada treino com os dados do Strava. Modo claro e escuro. Os dados ficam no aparelho e,
+se a pessoa entrar com o Google, também na nuvem (Redis da Upstash), para não perder nada e usar em
+outro aparelho. A conexão com o Strava fica num cookie criptografado do navegador.
 
 ## Funções
 
@@ -25,6 +26,7 @@ aparelho (com backup em Ajustes) e a conexão com o Strava fica num cookie cript
 - Dia da prova: horários a partir da largada, checklist que dá para marcar e tela da prova com ritmo km a km.
 - Depois da prova: semana de recuperação e próximo objetivo escolhido por você.
 - Calendário de provas (aba Provas), com exportação para a agenda (.ics) e plano montado para cada prova.
+- Conta com login do Google (opcional): os dados vão para a nuvem e sincronizam entre aparelhos. A versão mais nova ganha.
 - Aviso e botão de atualizar quando sai uma versão nova (`/api/version`).
 
 ## Estrutura
@@ -34,7 +36,7 @@ aparelho (com backup em Ajustes) e a conexão com o Strava fica num cookie cript
   - `plan-parser.js` — lê planos em Markdown (gerados ou importados).
   - `analysis.js` — análise dos treinos e estimativa de tempo.
   - `plano.md` — plano de exemplo.
-- `api/` — funções do Vercel: integração com o Strava e versão publicada.
+- `api/` — funções do Vercel: integração com o Strava, login com Google (`auth/google.js`), dados da conta (`account.js`) e versão publicada.
 
 ## Configuração
 
@@ -43,9 +45,20 @@ aparelho (com backup em Ajustes) e a conexão com o Strava fica num cookie cript
    (ex.: `pacepro.vercel.app`, sem https).
 2. Copie o **Client ID** e o **Client Secret**.
 
-### 2. Vercel
+### 2. Google (login)
+1. Em https://console.cloud.google.com/apis/credentials, configure a **Tela de consentimento OAuth** (tipo Externo) e publique.
+2. Crie uma credencial **ID do cliente OAuth** do tipo **Aplicativo da Web**.
+3. Em **URIs de redirecionamento autorizados**, coloque `https://pacepro.vercel.app/api/auth/google` (troque pelo seu domínio).
+4. Copie o **ID do cliente** e a **Chave secreta do cliente**.
+
+### 3. Banco de dados
+Na Vercel, abra o projeto → **Storage** → **Create Database** → **Upstash for Redis** (plano grátis) e ligue ao projeto.
+Isso cria sozinho as variáveis `KV_REST_API_URL` e `KV_REST_API_TOKEN`.
+
+### 4. Vercel
 1. Em **Settings → Environment Variables**, crie:
    - `STRAVA_CLIENT_ID`, `STRAVA_CLIENT_SECRET`
+   - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
    - `SESSION_SECRET` — texto aleatório com 32 caracteres ou mais
 2. Faça **Redeploy**.
 

@@ -30,6 +30,7 @@
       <div class="tb-actions">
         <button class="btn sm ghost" id="goToday" type="button" hidden>Voltar para hoje</button>
         <button class="round sync" id="syncBtn" type="button" aria-label="Sincronizar com o Strava"><svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.5-4.6L4 8M4 4v4h4M4 13a8 8 0 0 0 14.5 4.6L20 16M20 20v-4h-4"/></svg><i class="sdot" id="syncDot"></i></button>
+        <button class="round bell" id="bellBtn" type="button" aria-label="Notificações" aria-haspopup="dialog" aria-expanded="false"><svg viewBox="0 0 24 24"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/></svg><i class="bcount" id="bellCount" hidden></i></button>
         <a class="me" id="meChip" href="#ajustes" hidden><span class="me-pic" id="mePic" aria-hidden="true"></span><span class="me-name" id="meName"></span></a>
       </div>
     </div>
@@ -342,6 +343,16 @@
     <a href="#provas" data-tab="provas"><span class="ti"><svg viewBox="0 0 24 24"><path d="M6 21V4M6 4h11l-2 4 2 4H6"/></svg></span><span>Provas</span></a>
     <a href="#ajustes" data-tab="ajustes"><span class="ti"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/></svg></span><span>Ajustes</span></a>
   </nav>
+</div>
+<div class="inbox" id="inbox" hidden role="dialog" aria-modal="true" aria-labelledby="inboxTitle">
+  <div class="inbox-panel">
+    <div class="card-head"><h2 id="inboxTitle">Notificações</h2><button class="round sm" id="inboxClose" type="button" aria-label="Fechar">×</button></div>
+    <div class="inbox-acts" id="inboxActs">
+      <button class="linkbtn" id="inboxReadAll" type="button">Marcar todas como lidas</button>
+      <button class="linkbtn danger" id="inboxClear" type="button">Limpar tudo</button>
+    </div>
+    <div class="inbox-list" id="inboxList"></div>
+  </div>
 </div>
 <div class="runsheet" id="runSheet" hidden role="dialog" aria-modal="true" aria-label="Corrida">
   <div class="rs-bar"><button class="rs-back" id="rsBack" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>Voltar</button><b>Corrida</b><span></span></div>

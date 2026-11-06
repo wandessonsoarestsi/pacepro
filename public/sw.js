@@ -1,5 +1,5 @@
 /* PacePro: funciona sem internet. Arquivos do site em cache; o Strava sempre pela rede. */
-const CACHE = 'pacepro-v54';
+const CACHE = 'pacepro-v55';
 const CORE = ['/', '/styles.css', '/app.js', '/plan-parser.js', '/analysis.js', '/route-map.js', '/route-video.js', '/route-image.js', '/plan-generator.js', '/plano.md', '/strava/connect-with-strava.svg', '/strava/powered-by-strava.svg',
   '/icon.svg', '/icon-192.png', '/apple-touch-icon.png', '/manifest.webmanifest',
   'https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js'];
@@ -25,18 +25,54 @@ self.addEventListener('fetch', e => {
   }).catch(() => caches.match(req).then(r => r || (req.mode === 'navigate' ? caches.match('/') : Response.error()))));
 });
 
-/* Notificações: o servidor manda { title, body, url, tag }. */
+/* Notificações: o servidor manda { title, body, url, tag }. Cada uma também fica guardada na caixa do app
+   (IndexedDB, só neste aparelho), que aparece no sininho do topo. */
+function inboxDb() {
+  return new Promise((ok, no) => {
+    const r = indexedDB.open('pacepro', 1);
+    r.onupgradeneeded = () => { if (!r.result.objectStoreNames.contains('inbox')) r.result.createObjectStore('inbox', { keyPath: 'id' }); };
+    r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error);
+  });
+}
+async function inboxAdd(m, id) {
+  try {
+    const db = await inboxDb();
+    await new Promise((ok, no) => {
+      const tx = db.transaction('inbox', 'readwrite');
+      tx.objectStore('inbox').put({ id, title: m.title || 'PacePro', body: m.body || '', url: m.url || '/', tag: m.tag || '', at: Date.now(), read: false });
+      tx.oncomplete = ok; tx.onerror = () => no(tx.error);
+    });
+    db.close();
+    const list = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    list.forEach(c => c.postMessage({ type: 'inbox' }));
+  } catch (e) {}
+}
 self.addEventListener('push', e => {
   let m = {}; try { m = e.data ? e.data.json() : {}; } catch (err) { m = { body: e.data ? e.data.text() : '' }; }
-  e.waitUntil(self.registration.showNotification(m.title || 'PacePro', {
+  const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  e.waitUntil(Promise.all([inboxAdd(m, id), self.registration.showNotification(m.title || 'PacePro', {
     body: m.body || '', tag: m.tag || undefined, renotify: !!m.tag, icon: '/icon-192.png', badge: '/badge-96.png', lang: 'pt-BR',
-    data: { url: m.url || '/' }
-  }));
+    data: { url: m.url || '/', id }
+  })]));
 });
+// Tocar na notificação marca como lida na caixa do app.
+async function inboxRead(id) {
+  if (!id) return;
+  try {
+    const db = await inboxDb();
+    await new Promise(ok => {
+      const tx = db.transaction('inbox', 'readwrite'), st = tx.objectStore('inbox'), g = st.get(id);
+      g.onsuccess = () => { if (g.result) st.put({ ...g.result, read: true }); };
+      tx.oncomplete = ok; tx.onerror = ok;
+    });
+    db.close();
+  } catch (e) {}
+}
 self.addEventListener('notificationclick', e => {
   e.notification.close();
+  const read = inboxRead(e.notification.data && e.notification.data.id);
   const url = new URL((e.notification.data && e.notification.data.url) || '/', self.location.origin).href;
-  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
+  e.waitUntil(read.then(() => self.clients.matchAll({ type: 'window', includeUncontrolled: true })).then(list => {
     const w = list.find(c => new URL(c.url).origin === self.location.origin);
     if (w) return w.focus().then(c => (c && 'navigate' in c ? c.navigate(url) : null)).catch(() => self.clients.openWindow(url));
     return self.clients.openWindow(url);

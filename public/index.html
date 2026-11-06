@@ -45,7 +45,7 @@
     <section data-view="hoje" class="view">
       <div class="card noplan welcome" data-no-plan hidden>
         <span class="eyebrow">Bem-vindo ao PacePro</span>
-        <h3 id="wTitle">Seu plano de corrida em 2 passos</h3>
+        <h3 id="wTitle">Seu plano de treino em 2 passos</h3>
         <p class="muted">Tudo fica salvo neste celular. Se quiser, entre com o Google para guardar na nuvem e não perder nada.</p>
         <p class="small" id="wAcct" hidden>Já usa o PacePro em outro aparelho? <button class="linkbtn" type="button" data-google-login>Entrar com Google</button> para trazer seus dados.</p>
         <ol class="steps">
@@ -81,6 +81,7 @@
           </div>
           <span class="more" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></span>
         </a>
+        <div class="card" id="sportsHome" hidden></div>
         <div class="card" id="recentCard" hidden></div>
         <div class="card" id="nextCard" hidden></div>
         <div class="card" id="weekSumHome" hidden></div>
@@ -106,6 +107,7 @@
         <div class="card prose" id="fullPlan" hidden></div>
         </div>
         <div class="col col-side">
+        <div class="card" id="sportsCard" hidden></div>
         <div class="card" id="actsCard" hidden></div>
         <div class="card" id="raceCard"></div>
         <div class="card" id="testCard"></div>
@@ -220,15 +222,32 @@
         <input id="mdFile" type="file" accept=".md,.markdown,text/markdown,text/plain" hidden>
         <p class="msg" id="planMsg" hidden></p>
         <div class="gen" id="genBox" hidden>
-          <p class="muted small">Informe a prova e o objetivo. O plano é montado na hora (método VDOT) a partir do seu nível atual, calculado com as suas corridas.</p>
+          <p class="muted small">Escolha as modalidades, o foco e a meta de cada uma. O app monta a semana inteira nos seus dias de treino, por algoritmo (corrida pelo método VDOT), a partir do seu nível atual.</p>
           <form id="genForm" class="form" novalidate>
+            <fieldset class="full xtra" id="gSportsBox">
+              <legend>Modalidades</legend>
+              <div class="sportpick" id="gSports">
+                <label><input type="checkbox" data-sport="run" checked><span>Corrida</span></label>
+                <label><input type="checkbox" data-sport="swim"><span>Natação</span></label>
+                <label><input type="checkbox" data-sport="bike"><span>Bike</span></label>
+                <label><input type="checkbox" data-sport="gym"><span>Musculação</span></label>
+                <label><input type="checkbox" data-sport="hyrox"><span>Hyrox</span></label>
+                <label><input type="checkbox" data-sport="crossfit"><span>Crossfit</span></label>
+                <label><input type="checkbox" data-sport="tri"><span>Triatlo</span></label>
+                <label><input type="checkbox" data-sport="mobility"><span>Mobilidade</span></label>
+              </div>
+              <input id="gOther" type="text" maxlength="40" placeholder="Outra: funcional, pilates, remo…" aria-label="Outra modalidade">
+              <div class="sportgoals" id="gGoals"></div>
+              <small class="muted">Toque em <b>Foco</b> nas modalidades que mais importam agora: elas ganham mais treinos. A meta é opcional (ex.: 15 km em 1 mês, sub 2h no Hyrox, primeiro triatlo).</small>
+            </fieldset>
+            <label for="gEvent" class="full">Prova principal do ciclo<select id="gEvent"></select></label>
             <label for="gRace">Data da prova<input id="gRace" type="date" required></label>
             <label for="gStart">Início do plano<input id="gStart" type="date" required></label>
-            <label for="gDist">Distância
+            <label for="gDist" data-run-event>Distância
               <select id="gDist"><option value="5">5 km</option><option value="10">10 km</option><option value="21.1">21,1 km</option><option value="42.2">42,2 km</option></select></label>
-            <label for="gGoal">Tempo-objetivo<input id="gGoal" type="text" inputmode="numeric" placeholder="30:00" required></label>
+            <label for="gGoal" data-run-event>Tempo-objetivo<input id="gGoal" type="text" inputmode="numeric" placeholder="30:00" required></label>
             <fieldset class="full xtra" id="gDaysBox">
-              <legend>Dias de corrida</legend>
+              <legend>Dias de treino</legend>
               <div class="daypick" id="gDays">
                 <label><input type="checkbox" data-wd="0" checked><span>Seg</span></label>
                 <label><input type="checkbox" data-wd="1"><span>Ter</span></label>
@@ -238,22 +257,11 @@
                 <label><input type="checkbox" data-wd="5"><span>Sáb</span></label>
                 <label><input type="checkbox" data-wd="6" checked><span>Dom</span></label>
               </div>
-              <small class="muted" id="gDaysHint">4 corridas por semana. O longão fica no fim de semana quando der.</small>
+              <small class="muted" id="gDaysHint">4 dias de treino por semana.</small>
             </fieldset>
             <label for="gLevel" class="full">Momento atual
               <select id="gLevel"><option value="normal">Treinando normalmente</option><option value="pausa">Voltando de uma pausa</option><option value="iniciante">Começando agora</option></select></label>
-            <fieldset class="full xtra">
-              <legend>Além da corrida (opcional)</legend>
-              <div class="checks">
-                <label for="gGym"><input id="gGym" type="checkbox"> Musculação</label>
-                <label for="gSwim"><input id="gSwim" type="checkbox" data-cross="swim"> Natação</label>
-                <label for="gBike"><input id="gBike" type="checkbox" data-cross="bike"> Bike</label>
-                <label for="gMob"><input id="gMob" type="checkbox" data-cross="mobility"> Mobilidade</label>
-              </div>
-              <input id="gOther" type="text" maxlength="40" placeholder="Outra: funcional, pilates, remo…" aria-label="Outra atividade">
-              <small class="muted">Musculação vai de segunda a sexta. As outras ficam nos dias sem corrida e revezam entre si.</small>
-            </fieldset>
-            <label for="gCur" class="full">Tempo atual nos 5 km (opcional)<input id="gCur" type="text" inputmode="numeric" placeholder="calculado pelas suas corridas"></label>
+            <label for="gCur" class="full" data-run>Tempo atual nos 5 km (opcional)<input id="gCur" type="text" inputmode="numeric" placeholder="calculado pelas suas corridas"></label>
             <button class="btn full" id="gBtn" type="submit">Gerar plano</button>
           </form>
           <p class="msg" id="genMsg" hidden></p>

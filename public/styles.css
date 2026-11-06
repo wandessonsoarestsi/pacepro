@@ -103,8 +103,8 @@ main{padding:4px max(var(--gutter),env(safe-area-inset-right,0px)) 32px max(var(
 .split>.col{display:contents}
 
 /* Ordem no celular (as colunas somem e os cartões seguem esta ordem) */
-#summaryCard{order:1} #adjust{order:2} #analysis,#workout{order:3} #recentCard{order:4} #nextCard{order:5} #weekSumHome{order:6}
-#prePlan{order:1} #actsCard{order:2} #weekPills{order:3} #weekNote{order:4} #weekDays{order:5} #raceCard{order:6} #testCard{order:7} #calcCard{order:8} #openFull{order:9} #fullPlan{order:10}
+#summaryCard{order:1} #adjust{order:2} #analysis,#workout{order:3} #sportsHome{order:4} #recentCard{order:4} #nextCard{order:5} #weekSumHome{order:6}
+#prePlan{order:1} #sportsCard{order:2} #actsCard{order:2} #weekPills{order:3} #weekNote{order:4} #weekDays{order:5} #raceCard{order:6} #testCard{order:7} #calcCard{order:8} #openFull{order:9} #fullPlan{order:10}
 #chartCard{order:1} #weekSum{order:2} #volCard{order:3} #cadCard{order:4} #dietCard{order:5} #weightCard{order:6} #zonesCard{order:7} #runsCard{order:8}
 
 /* Topo */
@@ -290,6 +290,29 @@ fieldset.xtra legend{font-size:var(--fs-sm);font-weight:550;color:var(--fg2);pad
 .daypick span{display:flex;align-items:center;justify-content:center;min-height:40px;border:1px solid var(--line2);border-radius:var(--r-pill);font-size:var(--fs-sm);font-weight:550;color:var(--fg2);background:var(--card);transition:background var(--t-fast),color var(--t-fast),border-color var(--t-fast)}
 .daypick input:checked+span{background:var(--btn);border-color:var(--btn);color:var(--btn-fg)}
 .daypick input:focus-visible+span{box-shadow:var(--ring)}
+.sportpick{display:flex;flex-wrap:wrap;gap:8px}
+.sportpick label{position:relative;display:block;cursor:pointer}
+.sportpick input{position:absolute;opacity:0;width:1px;height:1px}
+.sportpick span{display:flex;align-items:center;min-height:38px;padding:0 14px;border:1px solid var(--line2);border-radius:var(--r-pill);font-size:var(--fs-sm);font-weight:550;color:var(--fg2);background:var(--card);transition:background var(--t-fast),color var(--t-fast),border-color var(--t-fast)}
+.sportpick input:checked+span{background:var(--btn);border-color:var(--btn);color:var(--btn-fg)}
+.sportpick input:focus-visible+span{box-shadow:var(--ring)}
+.sportgoals{display:flex;flex-direction:column;gap:8px}
+.sg-row{display:grid;grid-template-columns:32px minmax(0,auto) auto 1fr;gap:8px 10px;align-items:center}
+.sg-row .ico{width:32px;height:32px}.sg-row .ico svg{width:16px;height:16px}
+.sg-row b{font-size:var(--fs-sm);font-weight:600;white-space:nowrap}
+.sg-row input{min-width:0}
+.focus-tg{border:1px solid var(--line2);background:var(--card);color:var(--muted);border-radius:var(--r-pill);min-height:32px;padding:0 12px;font:inherit;font-size:12.5px;font-weight:650;cursor:pointer}
+.focus-tg::before{content:"☆ "}
+.focus-tg[aria-pressed="true"]{background:var(--tint-teal);border-color:var(--c1);color:var(--c1)}
+.focus-tg[aria-pressed="true"]::before{content:"★ "}
+@media (max-width:420px){.sg-row{grid-template-columns:32px 1fr auto}.sg-row input{grid-column:1/-1}}
+.sports{display:flex;flex-direction:column}
+.sp-row{display:grid;grid-template-columns:40px 1fr auto;gap:12px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}
+.sp-row:first-child{border-top:0}
+.sp-txt{min-width:0}.sp-txt .t{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-weight:600;font-size:15px}
+.sp-txt .s{display:block;color:var(--muted);font-size:var(--fs-sm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sp-n{display:flex;flex-direction:column;align-items:flex-end;font-variant-numeric:tabular-nums}.sp-n b{font-size:17px}.sp-n small{color:var(--muted);font-size:12px}
+.chip.sm{font-size:11px;padding:1px 8px}
 .wform{display:flex;gap:8px}
 .wform input,.wform select{flex:1}
 .gen{display:flex;flex-direction:column;gap:12px;border-top:1px solid var(--line);padding-top:16px;scroll-margin-top:110px}

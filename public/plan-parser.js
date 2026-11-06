@@ -21,6 +21,12 @@
     const t = clean(rua).toLowerCase();
     if (!t || t === '—' || t === '-') return 'rest';
     if (/^descanso/.test(t)) return 'rest';
+    // Plano híbrido: prova de outra modalidade, transição (bike + corrida), Hyrox, Crossfit e musculação.
+    if (/🏅/.test(t)) return 'event';
+    if (/🧱/.test(t) || /^transi[cç][aã]o\b/.test(t)) return 'brick';
+    if (/^hyrox\b/.test(t)) return 'hyrox';
+    if (/^(crossfit|wod)\b/.test(t)) return 'crossfit';
+    if (/💪/.test(t) || /^muscula[cç][aã]o\b/.test(t)) return 'gym';
     if (/nata[cç][aã]o|🏊/.test(t)) return 'swim';
     if (/🚴/.test(t) || /^(bike|bicicleta|pedal|ciclismo)\b/.test(t)) return 'bike';
     if (/🧘/.test(t) || /^(mobilidade|alongamento|yoga|pilates)\b/.test(t)) return 'mobility';
@@ -38,14 +44,31 @@
   function shortTitle(rua) {
     const bold = (rua.match(/\*\*([^*]+)\*\*/g) || []).map(b => clean(b)).filter(b => b.length > 1);
     let t = bold.length ? bold.join(' + ') : clean(rua).split(/[,.(]/)[0];
-    t = t.replace(/^[🏊🏁🏆🚴🧘🔸]\s*/u, '').replace(/[🏊🏁🏆🚴🧘🔸]/gu, '').trim();
+    t = t.replace(/^[🏊🏁🏆🚴🧘🔸🏅🧱💪]\s*/u, '').replace(/[🏊🏁🏆🚴🧘🔸🏅🧱💪]/gu, '').trim();
     t = t.replace(/(\d+)'\s*L\b/g, "$1' leve");
     return t.length > 70 ? t.slice(0, 67).trim() + '…' : t;
   }
 
+  // Título de uma sessão que não é corrida. No plano híbrido: "Natação: 5 × 200 m fortes".
+  const LABEL = { swim: 'Natação', bike: 'Bike', hyrox: 'Hyrox', crossfit: 'Crossfit', brick: 'Transição', mobility: 'Mobilidade', event: 'Prova' };
+  function sessionTitle(type, rua) {
+    const raw = clean(rua).replace(/[🏊🚴🧘🔸🏅🧱💪]/gu, '').trim();
+    const bold = (rua.match(/\*\*([^*]+)\*\*/g) || []).map(b => clean(b)).filter(b => b.length > 1);
+    if (type === 'event') return bold.join(' + ') || raw;
+    if (/\s—\s/.test(raw) && bold.length) {
+      const head = raw.split(/\s—\s/)[0].trim();
+      const t = `${head}: ${bold.join(' + ')}`;
+      return t.length > 70 ? t.slice(0, 67).trim() + '…' : t;
+    }
+    if (type === 'swim') return ('Natação ' + raw.replace(/nata[cç][aã]o/gi, '').trim()).trim();
+    return raw.charAt(0).toUpperCase() + raw.slice(1);
+  }
+  const SPORT_KEY = { corrida: 'run', 'natação': 'swim', natacao: 'swim', bike: 'bike', 'musculação': 'gym', musculacao: 'gym', hyrox: 'hyrox', crossfit: 'crossfit', triatlo: 'tri', mobilidade: 'mobility' };
+  const sportKey = label => SPORT_KEY[clean(label).toLowerCase()] || 'other';
+
   function parse(md) {
     const lines = md.replace(/\r/g, '').split('\n');
-    const out = { title: '', race: null, goalSec: null, distanceKm: 5, weeks: [], days: [], gym: {}, raw: md };
+    const out = { title: '', race: null, goalSec: null, distanceKm: 5, weeks: [], days: [], gym: {}, sports: [], event: null, raw: md };
 
     const h1 = lines.find(l => /^#\s+/.test(l));
     out.title = h1 ? clean(h1.replace(/^#\s+/, '')) : 'Plano de treino';
@@ -55,7 +78,10 @@
       const m = /(\d{2})\/(\d{2})\/(\d{4})/.exec(raceLine);
       out.race = `${m[3]}-${m[2]}-${m[1]}`;
     }
-    const metaLine = lines.find(l => /meta/i.test(l) && /\d{1,2}:\d{2}/.test(l));
+    // "Objetivo:" é a meta de uma prova que não é de corrida; não vira tempo-objetivo.
+    const metaLine = lines.find(l => /meta/i.test(l) && /\d{1,2}:\d{2}/.test(l) && !/^\s*\|/.test(l) && !/\*\*Objetivo:\*\*/.test(l));
+    const evLine = lines.find(l => /^\*\*Prova principal:\*\*/i.test(l.trim()));
+    if (evLine) { const lab = clean(evLine.replace(/^\s*\*\*Prova principal:\*\*/i, '')); out.event = lab.toLowerCase() === 'meta' ? 'goal' : sportKey(lab); }
     if (metaLine) {
       const m = /(\d{1,2}):(\d{2})/.exec(metaLine);
       out.goalSec = (+m[1]) * 60 + (+m[2]);
@@ -65,7 +91,7 @@
     const baseYear = out.race ? +out.race.slice(0, 4) : new Date().getFullYear();
     const raceMonth = out.race ? +out.race.slice(5, 7) : 12;
 
-    let week = null, gymKey = null, gymRows = null, pendingNote = null;
+    let week = null, gymKey = null, gymRows = null, pendingNote = null, sportsOn = false, twoCol = false;
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
 
@@ -73,6 +99,15 @@
       if (wk) {
         week = { n: +wk[1], title: clean(wk[2]) || `Semana ${wk[1]}`, range: clean(wk[3] || ''), note: '', days: [] };
         out.weeks.push(week); gymKey = null; continue;
+      }
+      if (/^##\s+Modalidades/i.test(line)) { sportsOn = true; week = null; gymKey = null; continue; }
+      if (/^#{1,4}\s/.test(line)) sportsOn = false;
+      if (sportsOn && line.trim().startsWith('|')) {
+        const c = cells(line);
+        if (c.every(x => /^:?-+:?$/.test(x)) || /^modalidade$/i.test(clean(c[0]))) continue;
+        const pri = clean(c[1] || '');
+        out.sports.push({ k: sportKey(c[0]), label: clean(c[0]), focus: /foco/i.test(pri), event: /prova principal/i.test(pri), goal: /^[—-]?$/.test(clean(c[2] || '')) ? '' : clean(c[2]), perWeek: clean(c[3] || '') });
+        continue;
       }
       const g = /^#{2,4}\s+(?:💪\s*)?([A-E])\s*[—–-]\s*(.+)$/.exec(line);
       if (g) { gymKey = g[1]; out.gym[gymKey] = { key: gymKey, name: clean(g[2]), rows: [], note: '' }; gymRows = out.gym[gymKey].rows; continue; }
@@ -86,6 +121,7 @@
       }
       const c = cells(line);
       if (c.every(x => /^:?-+:?$/.test(x))) continue;
+      if (/^data$/i.test(clean(c[0]))) { twoCol = /2º treino/i.test(c[3] || ''); continue; }
 
       if (gymKey) {
         const head = c.map(x => clean(x).toLowerCase());
@@ -102,19 +138,26 @@
       const rua = c[1] || '', esteira = c[2] || '', musc = c[3] || '';
       const type = classify(rua);
       const gm = /\*\*([A-E])\b|^\s*([A-E])\b/.exec(musc);
-      const gymLetter = gm ? (gm[1] || gm[2]) : null;
+      const gmMain = type === 'gym' ? /Muscula[cç][aã]o\s+\**([A-E])\b/i.exec(rua) : null;
+      const gymLetter = gm ? (gm[1] || gm[2]) : gmMain ? gmMain[1] : null;
       const d = {
         date, week: week.n, key: /^\*\*/.test(c[0].trim()) || ['interval', 'threshold', 'test', 'race'].includes(type), type,
         title: shortTitle(rua),
         rua: clean(rua), esteira: clean(esteira),
         gym: gymLetter, gymText: clean(musc), targetPace: paceToSec(rua)
       };
-      if (type === 'swim') d.title = ('Natação ' + clean(rua).replace(/🏊|nata[cç][aã]o/gi, '').trim()).trim();
-      if (['bike', 'mobility', 'cross'].includes(type)) { const t = clean(rua).replace(/[🚴🧘🔸]/gu, '').trim(); d.title = t.charAt(0).toUpperCase() + t.slice(1); }
+      if (['swim', 'bike', 'mobility', 'cross', 'hyrox', 'crossfit', 'brick', 'event'].includes(type)) d.title = sessionTitle(type, rua);
       if (type === 'rest') d.title = 'Descanso';
+      // Plano híbrido: a 4ª coluna é o 2º treino do dia (letra da musculação ou outra sessão).
+      if (twoCol && !gm && !/^[—-]?$/.test(clean(musc))) {
+        const t2 = classify(musc);
+        if (t2 !== 'rest') d.second = { type: t2, title: sessionTitle(t2, musc), rua: clean(musc) };
+        d.gymText = '';
+      }
       week.days.push(d); out.days.push(d);
     }
     out.days.sort((a, b) => a.date.localeCompare(b.date));
+    out.days.forEach(d => { if (d.type === 'gym') d.title = d.gym && out.gym[d.gym] ? `Musculação ${d.gym} · ${out.gym[d.gym].name}` : `Musculação${d.gym ? ' ' + d.gym : ''}`; });
     if (!out.race) { const r = out.days.find(d => d.type === 'race'); if (r) out.race = r.date; }
     return out;
   }

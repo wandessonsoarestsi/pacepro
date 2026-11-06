@@ -2757,24 +2757,48 @@
     $('wInstallHow').innerHTML = installSteps(d).map(t => `<li>${t}</li>`).join('');
   }
   // Último passo: ligar as notificações (mesmo fluxo do botão de Ajustes).
-  function renderPushStep() {
-    const li = $('wPush'); if (!li) return;
+  // Preenche o texto e o botão de ativar notificações (passo das boas-vindas e cartão "Último passo").
+  // Devolve true quando já estão ligadas.
+  function fillPushStep(txt, act, after) {
     const sup = pushSupported(), perm = sup ? Notification.permission : 'unsupported';
     const on = sup && !!pushMeta().on && perm === 'granted';
-    li.classList.toggle('ok', on);
-    const txt = $('wPushTxt'), act = $('wPushAct');
     const base = 'Treino do dia, contagem para a prova, retirada do kit e aviso quando um treino novo chegar do Strava.';
-    if (on) { txt.textContent = base; act.innerHTML = `<span class="chip good">${CHECK}Notificações ativadas</span>`; return; }
-    if (isIOS() && !isStandalone()) { txt.textContent = 'No iPhone, as notificações só funcionam no app instalado. Faça o passo 1, abra o PacePro pelo ícone na tela de início e ative aqui.'; act.innerHTML = ''; return; }
-    if (!sup) { txt.textContent = 'Este navegador não recebe notificações. Use o Chrome no Android ou o app instalado no iPhone.'; act.innerHTML = ''; return; }
-    if (push.configured === false) { txt.textContent = 'As notificações ainda não estão disponíveis neste site.'; act.innerHTML = ''; return; }
+    if (on) { txt.textContent = base; act.innerHTML = `<span class="chip good">${CHECK}Notificações ativadas</span>`; return true; }
+    if (isIOS() && !isStandalone()) { txt.textContent = 'No iPhone, as notificações só funcionam no app instalado. Instale o PacePro na tela de início, abra pelo ícone e ative por lá.'; act.innerHTML = ''; return false; }
+    if (!sup) { txt.textContent = 'Este navegador não recebe notificações. Use o Chrome no Android ou o app instalado no iPhone.'; act.innerHTML = ''; return false; }
+    if (push.configured === false) { txt.textContent = 'As notificações ainda não estão disponíveis neste site.'; act.innerHTML = ''; return false; }
     txt.textContent = perm === 'denied' ? 'As notificações estão bloqueadas para o PacePro. Libere nas configurações do navegador ou do celular e toque no botão de novo.' : base;
-    act.innerHTML = '<button class="btn" type="button" id="wPushBtn">Ativar notificações</button>';
-    const b = $('wPushBtn'); b.disabled = push.busy;
-    b.onclick = async () => { b.disabled = true; await $('pushOn').onclick(); renderWelcome(); };
+    act.innerHTML = '<button class="btn" type="button">Ativar notificações</button>';
+    const b = act.querySelector('button'); b.disabled = push.busy;
+    b.onclick = async () => { b.disabled = true; await $('pushOn').onclick(); after(); };
+    return false;
+  }
+  function renderPushStep() {
+    const li = $('wPush'); if (!li) return;
+    li.classList.toggle('ok', fillPushStep($('wPushTxt'), $('wPushAct'), renderWelcome));
+  }
+  // Com o plano pronto, as boas-vindas somem. Se as notificações ainda estiverem desligadas,
+  // o último passo continua no Início até a pessoa ativar ou tocar em "Agora não".
+  let pushNudgeDone = false;
+  function renderPushNudge() {
+    const c = $('pushNudge'); if (!c) return;
+    const sup = pushSupported(), on = sup && !!pushMeta().on && Notification.permission === 'granted';
+    const can = (sup || isIOS()) && push.configured !== false;
+    c.hidden = !plan || !can || !!store.get('pp.pushNudge', 0) || (on && !pushNudgeDone);
+    if (c.hidden) return;
+    const done = fillPushStep($('pnTxt'), $('pnAct'), () => { pushNudgeDone = true; renderPushNudge(); });
+    c.classList.toggle('ok', done);
+    c.querySelector('h3').textContent = done ? 'Tudo pronto' : 'Ative as notificações';
+    c.querySelector('.eyebrow').textContent = done ? 'Notificações ativadas' : 'Último passo';
+    if (done) $('pnTxt').textContent = 'Os avisos chegam neste aparelho mesmo com o app fechado. Escolha quais quer receber em Ajustes.';
+    const skip = document.createElement('button');
+    skip.type = 'button'; skip.className = 'btn ghost'; skip.textContent = done ? 'Fechar' : 'Agora não';
+    skip.onclick = () => { store.set('pp.pushNudge', 1); renderPushNudge(); };
+    $('pnAct').appendChild(skip);
   }
   function renderWelcome() {
     renderPushStep();
+    renderPushNudge();
     renderInstallStep();
     const w = $('wStrava'); if (!w) return;
     w.classList.toggle('ok', strava.connected);

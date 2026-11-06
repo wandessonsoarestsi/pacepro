@@ -834,3 +834,8 @@ input,select,textarea{font-size:16px!important}
 .howto li{display:list-item;border:0;padding:0}
 .howto b{display:inline;font-size:inherit;color:var(--fg)}
 .howto .ico{display:inline-block;width:16px;height:16px;vertical-align:-3px;margin:0 2px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.pushnudge{background:var(--glow),var(--card);margin-bottom:var(--gap,16px)}
+.pushnudge h3{margin:2px 0 4px}
+.pushnudge .eyebrow{color:var(--c1)}
+.pushnudge small{display:block}
+.pushnudge.ok .eyebrow{color:var(--good)}

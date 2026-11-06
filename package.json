@@ -2,6 +2,6 @@
   "name": "pacepro",
   "private": true,
   "version": "1.0.0",
-  "description": "Plano de treino de corrida com Strava e IA",
+  "description": "Plano de treino de corrida gerado por algoritmo, com análise dos treinos do Strava",
   "engines": { "node": ">=18" }
 }

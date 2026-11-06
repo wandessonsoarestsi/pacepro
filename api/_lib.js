@@ -80,12 +80,13 @@ async function strava(path, s) {
   const r = await fetch(`${STRAVA}/api/v3${path}`, { headers: { Authorization: `Bearer ${s.access}` } });
   if (r.status === 429) throw Object.assign(new Error('Limite de consultas do Strava atingido. Tente em 15 minutos.'), { status: 429 });
   const j = await r.json().catch(() => ({}));
+  if (r.status === 404) throw Object.assign(new Error('Atividade não encontrada no Strava.'), { status: 404 });
   if (!r.ok) throw Object.assign(new Error(j.message || 'Erro no Strava'), { status: r.status === 401 ? 401 : 502 });
   return j;
 }
 
 function fail(res, e) {
-  const status = [400, 401, 409, 413, 429, 502].includes(e.status) ? e.status : 500;
+  const status = [400, 401, 404, 409, 413, 429, 502].includes(e.status) ? e.status : 500;
   res.status(status).json({ error: e.message || 'Erro inesperado' });
 }
 

@@ -1709,6 +1709,100 @@
     pushSync(true).catch(e => showToast(e.message, true));
   });
 
+  /* ---------- Caixa de notificações (sininho no topo) ---------- */
+  // O service worker guarda cada notificação recebida no IndexedDB deste aparelho. Aqui dá para ler, apagar e limpar.
+  let inbox = [];
+  function inboxDb() {
+    return new Promise((ok, no) => {
+      if (!window.indexedDB) return no(new Error('sem IndexedDB'));
+      const r = indexedDB.open('pacepro', 1);
+      r.onupgradeneeded = () => { if (!r.result.objectStoreNames.contains('inbox')) r.result.createObjectStore('inbox', { keyPath: 'id' }); };
+      r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error);
+    });
+  }
+  // fn recebe o objectStore. Devolve o resultado do pedido (se houver) quando a transação termina.
+  async function inboxTx(mode, fn) {
+    const db = await inboxDb();
+    try {
+      return await new Promise((ok, no) => {
+        const tx = db.transaction('inbox', mode), req = fn(tx.objectStore('inbox'));
+        tx.oncomplete = () => ok(req && req.result); tx.onerror = () => no(tx.error);
+      });
+    } finally { db.close(); }
+  }
+  const INBOX_DAYS = 30;
+  async function loadInbox() {
+    try {
+      const all = (await inboxTx('readonly', s => s.getAll())) || [];
+      const old = all.filter(n => Date.now() - n.at > INBOX_DAYS * 864e5);
+      if (old.length) await inboxTx('readwrite', s => { old.forEach(n => s.delete(n.id)); });
+      inbox = all.filter(n => !old.includes(n)).sort((a, b) => b.at - a.at).slice(0, 100);
+    } catch (e) { inbox = []; }
+    renderBell();
+    if (!$('inbox').hidden) renderInbox();
+  }
+  function renderBell() {
+    const n = inbox.filter(x => !x.read).length, c = $('bellCount');
+    c.hidden = !n; c.textContent = n > 9 ? '9+' : String(n);
+    $('bellBtn').setAttribute('aria-label', n ? `Notificações, ${n} não lida${n > 1 ? 's' : ''}` : 'Notificações');
+  }
+  function whenTxt(at) {
+    const min = Math.round((Date.now() - at) / 60000);
+    if (min < 1) return 'agora';
+    if (min < 60) return `há ${min} min`;
+    const d = isoLocal(new Date(at)), hm = new Date(at).toLocaleTimeString('pt-BR', { timeZone: TZ, hour: '2-digit', minute: '2-digit' });
+    return d === today ? `hoje, ${hm}` : d === addDays(today, -1) ? `ontem, ${hm}` : `${ddmm(d)}, ${hm}`;
+  }
+  function renderInbox() {
+    const box = $('inboxList');
+    $('inboxActs').hidden = !inbox.length;
+    $('inboxReadAll').hidden = !inbox.some(x => !x.read);
+    if (!inbox.length) {
+      const on = pushSupported() && pushMeta().on && Notification.permission === 'granted';
+      box.innerHTML = `<div class="inbox-empty"><p class="muted">Nenhuma notificação por aqui.</p>${on ? '' : '<a class="btn ghost sm" href="#ajustes" data-inbox-go>Ativar notificações</a>'}</div>`;
+    } else {
+      box.innerHTML = inbox.map(n => `<div class="nitem${n.read ? ' read' : ''}"><i class="ndot" aria-hidden="true"></i><button class="nopen" type="button" data-nopen="${esc(n.id)}"><span class="nt">${esc(n.title)}</span>${n.body ? `<span class="nb">${esc(n.body)}</span>` : ''}<span class="nw">${whenTxt(n.at)}${n.read ? '' : ' · não lida'}</span></button><button class="round sm ndel" type="button" data-ndel="${esc(n.id)}" aria-label="Apagar notificação">×</button></div>`).join('');
+    }
+    box.querySelectorAll('[data-inbox-go]').forEach(a => a.onclick = () => { closeInbox(); setTimeout(() => { const c = $('pushCard'); if (c) c.scrollIntoView({ block: 'start' }); }, 80); });
+    box.querySelectorAll('[data-nopen]').forEach(b => b.onclick = async () => {
+      const n = inbox.find(x => x.id === b.dataset.nopen); if (!n) return;
+      if (!n.read) { n.read = true; try { await inboxTx('readwrite', s => s.put(n)); } catch (e) {} }
+      closeInbox(); renderBell();
+      const h = /#(\w+)/.exec(n.url || ''); if (h && VIEWS.includes(h[1])) { location.hash = h[1]; if (h[1] === 'hoje') { selected = today; renderAll(); } }
+    });
+    box.querySelectorAll('[data-ndel]').forEach(b => b.onclick = async () => {
+      inbox = inbox.filter(x => x.id !== b.dataset.ndel);
+      try { await inboxTx('readwrite', s => s.delete(b.dataset.ndel)); } catch (e) {}
+      renderInbox(); renderBell();
+    });
+  }
+  function openInbox() {
+    $('inbox').hidden = false; $('bellBtn').setAttribute('aria-expanded', 'true');
+    renderInbox(); loadInbox(); track('notificacoes-caixa');
+    setTimeout(() => $('inboxClose').focus(), 30);
+  }
+  function closeInbox() { if ($('inbox').hidden) return; $('inbox').hidden = true; $('bellBtn').setAttribute('aria-expanded', 'false'); $('bellBtn').focus(); }
+  $('bellBtn').onclick = () => $('inbox').hidden ? openInbox() : closeInbox();
+  $('inboxClose').onclick = closeInbox;
+  $('inbox').addEventListener('click', e => { if (e.target === $('inbox')) closeInbox(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeInbox(); });
+  $('inboxReadAll').onclick = async () => {
+    inbox.forEach(n => { n.read = true; });
+    try { await inboxTx('readwrite', s => { inbox.forEach(n => s.put(n)); }); } catch (e) {}
+    renderInbox(); renderBell();
+  };
+  $('inboxClear').onclick = async () => {
+    const b = $('inboxClear');
+    if (!b.dataset.armed) { b.dataset.armed = '1'; b.textContent = 'Toque de novo para limpar'; setTimeout(() => { delete b.dataset.armed; b.textContent = 'Limpar tudo'; }, 4000); return; }
+    delete b.dataset.armed; b.textContent = 'Limpar tudo';
+    inbox = [];
+    try { await inboxTx('readwrite', s => s.clear()); } catch (e) {}
+    renderInbox(); renderBell(); showToast('Notificações apagadas.');
+  };
+  if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', e => { if (e.data && e.data.type === 'inbox') loadInbox(); });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') loadInbox(); });
+  loadInbox();
+
   /* ---------- Ritmos recalculados pelo teste ---------- */
   const PG = window.PlanGenerator;
   const fmtP5 = s => { s = Math.round(s / 5) * 5; return `${Math.floor(s / 60)}'${pad(s % 60)}"`; };

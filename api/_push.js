@@ -32,7 +32,9 @@ async function vapidKeys() {
 
 function vapidAuth(endpoint, keys, subject) {
   const pub = unb64(keys.publicKey);
-  const jwk = { kty: 'EC', crv: 'P-256', d: keys.privateKey, x: b64(pub.subarray(1, 33)), y: b64(pub.subarray(33, 65)) };
+  // A chave privada precisa ter 32 bytes (às vezes vem com um zero a menos no começo).
+  const d = unb64(keys.privateKey); const d32 = Buffer.concat([Buffer.alloc(Math.max(0, 32 - d.length)), d]);
+  const jwk = { kty: 'EC', crv: 'P-256', d: b64(d32), x: b64(pub.subarray(1, 33)), y: b64(pub.subarray(33, 65)) };
   const head = b64(JSON.stringify({ typ: 'JWT', alg: 'ES256' }));
   const body = b64(JSON.stringify({ aud: new URL(endpoint).origin, exp: Math.floor(Date.now() / 1000) + 12 * 3600, sub: subject }));
   const sig = crypto.sign('sha256', Buffer.from(`${head}.${body}`), { key: crypto.createPrivateKey({ key: jwk, format: 'jwk' }), dsaEncoding: 'ieee-p1363' });
@@ -55,8 +57,11 @@ function encrypt(sub, text) {
 }
 
 // Envia uma notificação. msg = { title, body, url, tag }. Devolve o status HTTP do serviço de push
-// (201 = entregue; 404/410 = o aparelho cancelou a inscrição).
+// (201 = entregue; 404/410 = o aparelho cancelou a inscrição; 0 = erro antes de chegar ao serviço).
+// O motivo de uma falha fica em lastError, para aparecer no teste.
+let lastError = '';
 async function send(sub, msg, opts) {
+  lastError = '';
   const keys = await vapidKeys();
   const subject = process.env.VAPID_SUBJECT || `${(opts && opts.origin) || 'https://pacepro.vercel.app'}`;
   const ctrl = new AbortController(); const timer = setTimeout(() => ctrl.abort(), (opts && opts.timeout) || 8000);
@@ -65,18 +70,19 @@ async function send(sub, msg, opts) {
       method: 'POST', signal: ctrl.signal,
       headers: {
         Authorization: vapidAuth(sub.endpoint, keys, subject), 'Content-Encoding': 'aes128gcm', 'Content-Type': 'application/octet-stream',
-        TTL: String((opts && opts.ttl) || 12 * 3600), Urgency: (opts && opts.urgency) || 'normal', ...(msg.tag ? { Topic: String(msg.tag).replace(/[^\w-]/g, '').slice(0, 32) } : {})
+        TTL: String((opts && opts.ttl) || 12 * 3600), Urgency: (opts && opts.urgency) || 'normal'
       },
       body: encrypt(sub, JSON.stringify(msg))
     });
+    if (r.status >= 300) lastError = `${r.status} ${(await r.text().catch(() => '')).replace(/\s+/g, ' ').slice(0, 160)}`.trim();
     return r.status;
-  } catch (e) { return 0; } finally { clearTimeout(timer); }
+  } catch (e) { lastError = (e && e.name === 'AbortError') ? 'tempo esgotado' : String((e && e.message) || e).slice(0, 160); return 0; } finally { clearTimeout(timer); }
 }
 
 // Envia e tira da lista os aparelhos que cancelaram a inscrição.
 async function sendTo(id, rec, msg, opts) {
   const st = await send(rec.sub, msg, opts);
-  if (st === 404 || st === 410 || st === 403) await remove(id, rec);
+  if (st === 404 || st === 410) await remove(id, rec);
   return st;
 }
 async function load(id) { const [raw] = await db([['GET', subKey(id)]]); try { return raw ? JSON.parse(raw) : null; } catch (e) { return null; } }
@@ -86,4 +92,4 @@ async function remove(id, rec) {
   await db(cmds);
 }
 
-module.exports = { SUB_TTL, ALL, subKey, athKey, idOf, newKeys, vapidKeys, encrypt, send, sendTo, load, remove };
+module.exports = { lastError: () => lastError, SUB_TTL, ALL, subKey, athKey, idOf, newKeys, vapidKeys, encrypt, send, sendTo, load, remove };

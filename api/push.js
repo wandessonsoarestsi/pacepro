@@ -47,7 +47,12 @@ module.exports = async (req, res) => {
       const rec = await P.load(id);
       if (!rec) return res.status(404).json({ error: 'Ative as notificações de novo.' });
       const st = await P.sendTo(id, rec, { title: 'Notificações ligadas', body: 'É assim que os avisos do PacePro vão aparecer.', url: '/#ajustes', tag: 'teste' }, { origin: baseUrl(req), ttl: 600 });
-      if (st < 200 || st >= 300) return res.status(502).json({ error: st === 0 ? 'O serviço de notificações não respondeu. Tente de novo.' : 'Não consegui entregar. Desative e ative as notificações de novo.' });
+      if (st < 200 || st >= 300) {
+        const why = P.lastError(), host = (() => { try { return new URL(rec.sub.endpoint).host; } catch (e) { return ''; } })();
+        console.error('push teste falhou', host, why);
+        const hint = st === 404 || st === 410 ? 'Desative e ative as notificações de novo.' : 'Tente de novo.';
+        return res.status(502).json({ error: `Não consegui entregar a notificação (${host}: ${why || 'sem resposta'}). ${hint}` });
+      }
       return res.json({ ok: true });
     }
     const c = clean(b);

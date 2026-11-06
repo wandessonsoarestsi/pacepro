@@ -29,6 +29,7 @@ outro aparelho. A conexão com o Strava fica num cookie criptografado do navegad
 - Conta com login do Google (opcional): os dados vão para a nuvem e sincronizam entre aparelhos. A versão mais nova ganha.
 - Aviso e botão de atualizar quando sai uma versão nova (`/api/version`).
 - Notificações (Ajustes → Notificações), cada uma pode ser desligada: treino do dia às 7h, contagem para a prova (30, 14, 7, 3 e 1 dia), treino-chave de ontem que ficou sem fazer e treino novo no Strava. No iPhone, só com o app instalado na tela de início (iOS 16.4 ou mais novo).
+- Sininho no topo com as notificações recebidas neste aparelho (últimos 30 dias): ler, apagar uma ou limpar tudo.
 
 ## Estrutura
 

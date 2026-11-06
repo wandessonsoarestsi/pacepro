@@ -224,12 +224,15 @@
     clearTimeout(saveTimer);
     saveTimer = setTimeout(saveNow, 600);
   }
-  function saveNow() {
-    store.set(userKey('state'), { plan_md: planMd, done, extra, updated_at: new Date().toISOString() });
+  // at: horário da versão. Só vem preenchido quando os dados chegam da conta (aí não é uma mudança nova).
+  function saveNow(at) {
+    store.set(userKey('state'), { plan_md: planMd, done, extra, updated_at: at || new Date().toISOString() });
+    if (!at) acctChanged();
   }
   // Salva na hora ao fechar ou trocar de app, para não perder a última mudança.
-  window.addEventListener('pagehide', () => { if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; saveNow(); } });
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && saveTimer) { clearTimeout(saveTimer); saveTimer = null; saveNow(); } });
+  const flushSave = () => { if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; saveNow(); } if (acctTimer) { clearTimeout(acctTimer); acctTimer = null; acctPush(true); } };
+  window.addEventListener('pagehide', flushSave);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushSave(); });
   function loadState() {
     let row = store.get(userKey('state'), null);
     if (!row) { // versão antiga do site
@@ -243,6 +246,145 @@
     // Primeira visita: mostra as boas-vindas em vez do plano de exemplo.
     if (!row) { extra.fresh = true; saveNow(); }
   }
+
+  /* ---------- Conta (login com Google): guarda os dados na nuvem ---------- */
+  // pp.local.sync = { sub: conta ligada a este aparelho, at: versão da nuvem que este aparelho tem, dirty: há mudança para enviar }
+  let acct = { checked: false, configured: null, user: null, busy: false, error: null };
+  let acctTimer = null;
+  const syncMeta = () => store.get(userKey('sync'), {}) || {};
+  const setSyncMeta = m => store.set(userKey('sync'), m);
+  const localRow = () => store.get(userKey('state'), null);
+  const hasLocalData = row => !!(row && (row.plan_md || Object.keys(row.done || {}).length || (row.extra && ((row.extra.races || []).length || Object.keys(row.extra.weights || {}).length))));
+  function acctPayload() {
+    const row = localRow() || { plan_md: planMd, done, extra, updated_at: new Date().toISOString() };
+    const data = { app: 'pacepro', v: 2, plan_md: row.plan_md, done: row.done, extra: row.extra, runs };
+    // Sem os desenhos dos percursos se ficar grande demais (eles voltam ao sincronizar com o Strava).
+    if (JSON.stringify(data).length > 3.5e6) data.runs = runs.map(r => ({ ...r, poly: null }));
+    return { data, updated_at: row.updated_at };
+  }
+  async function acctApi(path, opts) {
+    const r = await fetch(path, { credentials: 'same-origin', ...(opts || {}) });
+    let j = null; try { j = await r.json(); } catch (e) {}
+    if (!r.ok) throw Object.assign(new Error((j && j.error) || 'Falha ao falar com a conta.'), { status: r.status, body: j });
+    return j;
+  }
+  function acctChanged() {
+    if (!acct.user) return;
+    const m = syncMeta(); if (m.sub !== acct.user.sub) return;
+    if (!m.dirty) setSyncMeta({ ...m, dirty: true });
+    clearTimeout(acctTimer); acctTimer = setTimeout(() => { acctTimer = null; acctPush(); }, 2000);
+  }
+  // Envia os dados deste aparelho. Ao fechar o app, usa keepalive (só cabe se for pequeno; senão vai na próxima abertura).
+  async function acctPush(closing) {
+    if (!acct.user) return;
+    const m = syncMeta(); if (m.sub !== acct.user.sub) return;
+    const p = acctPayload(), body = JSON.stringify(p);
+    if (closing && body.length > 60000) return;
+    try {
+      const j = await acctApi('/api/account', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body, keepalive: !!closing });
+      const now = syncMeta(); const row = localRow();
+      // Só limpa a marca se nada mudou enquanto enviava.
+      setSyncMeta({ ...now, sub: acct.user.sub, at: j.updated_at, dirty: !!(row && row.updated_at !== p.updated_at) });
+      acct.error = null;
+    } catch (e) {
+      if (e.status === 409) { try { await acctPull(); acct.error = null; } catch (er) { acct.error = er.message; } if (!closing) renderAcct(); return; }
+      if (e.status === 401) { acct.user = null; }
+      acct.error = e.message;
+    }
+    if (!closing) renderAcct();
+  }
+  // Traz os dados da conta e troca os deste aparelho.
+  async function acctPull() {
+    const j = await acctApi('/api/account?full=1');
+    if (!j.user) { acct.user = null; return false; }
+    if (!j.data) return false;
+    const d = j.data;
+    done = d.done || {}; extra = { ...defaultExtra(), ...(d.extra || {}) }; extra.fresh = false;
+    if (Array.isArray(d.runs) && (!strava.connected || !runs.length)) { runs = d.runs; store.set(userKey('runs'), runs); }
+    applyPlanMd(d.plan_md || null, 'salvo');
+    planWeek = null; if (plan) clampSelected();
+    clearTimeout(saveTimer); saveTimer = null;
+    saveNow(j.updated_at);
+    setSyncMeta({ sub: j.user.sub, at: j.updated_at, dirty: false });
+    renderAll();
+    return true;
+  }
+  // Confere a conta e sincroniza nos dois sentidos. A versão mais nova ganha.
+  async function acctSync(manual) {
+    if (!acct.user || acct.busy) return;
+    acct.busy = true; renderAcct();
+    try {
+      const j = await acctApi('/api/account');
+      if (!j.user) { acct.user = null; return; }
+      const m = syncMeta(), row = localRow(), server = j.updated_at;
+      if (m.sub !== j.user.sub) {
+        // Primeira vez desta conta neste aparelho.
+        const local = hasLocalData(row) ? row.updated_at : null;
+        if (!server) { setSyncMeta({ sub: j.user.sub, at: null, dirty: true }); await acctPush(); showToast('Conta ligada. Seus dados agora ficam guardados na nuvem.'); }
+        else if (local && local > server) { setSyncMeta({ sub: j.user.sub, at: server, dirty: true }); await acctPush(); showToast('Conta ligada. Os dados deste aparelho (mais novos) foram para a nuvem.'); }
+        else {
+          if (local) store.set(userKey('beforeLogin'), row); // guarda a versão deste aparelho, por segurança
+          await acctPull(); showToast('Dados da sua conta carregados.');
+        }
+      } else if (server && server !== m.at && !(m.dirty && row && row.updated_at > server)) {
+        await acctPull(); if (manual) showToast('Dados atualizados com a nuvem.');
+      } else if (m.dirty || !server) {
+        await acctPush(); if (manual && !acct.error) showToast('Dados salvos na nuvem.');
+      } else if (manual) showToast('Tudo sincronizado.');
+      acct.error = null;
+    } catch (e) {
+      if (e.status === 401) acct.user = null;
+      acct.error = e.message; if (manual) showToast(e.message, true);
+    } finally { acct.busy = false; renderAcct(); }
+  }
+  async function checkAccount() {
+    try { const j = await acctApi('/api/account'); acct = { ...acct, checked: true, configured: j.configured, user: j.user }; }
+    catch (e) { acct = { ...acct, checked: true, configured: null, user: null, error: e.message }; }
+  }
+  function renderAcct() {
+    const chip = $('acctChip'); if (!chip) return;
+    const u = acct.user, m = syncMeta();
+    const w = $('wAcct'); if (w) w.hidden = !!u || acct.configured !== true;
+    if (!acct.checked) { chip.textContent = 'verificando'; chip.className = 'chip'; }
+    else if (u && acct.busy) { chip.textContent = 'sincronizando'; chip.className = 'chip'; }
+    else if (u && acct.error) { chip.textContent = 'sem sincronizar'; chip.className = 'chip warn'; }
+    else if (u) { chip.textContent = 'na nuvem'; chip.className = 'chip good'; }
+    else { chip.textContent = 'sem conta'; chip.className = 'chip'; }
+    const when = m.at ? new Date(m.at).toLocaleString('pt-BR', { timeZone: TZ, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : null;
+    const t = $('acctText');
+    if (u) {
+      const pic = /^https:\/\//.test(u.pic || '') ? `<img class="acct-pic" src="${esc(u.pic)}" alt="" referrerpolicy="no-referrer">` : '';
+      t.innerHTML = `${pic}<b>${esc(u.name || u.email)}</b>${u.name && u.email ? ' · ' + esc(u.email) : ''}<br>` +
+        (acct.error ? esc(acct.error) + ' Os dados continuam salvos neste aparelho.' : `Seus dados ficam guardados na nuvem e aparecem em qualquer aparelho em que você entrar.${when ? ' Última versão salva em ' + when + '.' : ''}`);
+    } else {
+      t.textContent = acct.configured === false ? 'O login com Google ainda não foi configurado neste site (faltam as chaves do Google e o banco de dados no Vercel).'
+        : 'Entre com o Google para guardar seus dados na nuvem e usar o PacePro em outro aparelho. Sem senha nova.';
+    }
+    $('acctIn').hidden = !!u || acct.configured === false;
+    $('acctSync').hidden = !u; $('acctSync').disabled = acct.busy;
+    $('acctOut').hidden = !u;
+    $('acctDel').hidden = !u || !$('acctDelAsk').hidden;
+    if (!u) $('acctDelAsk').hidden = true;
+    const bk = $('bkText'); if (bk) bk.textContent = u ? 'Seus dados estão neste aparelho e na sua conta. Se quiser, baixe também um backup em arquivo.' : 'Tudo fica salvo neste aparelho. Entre com o Google em Sua conta para guardar na nuvem, ou baixe um backup.';
+  }
+  document.querySelectorAll('[data-google-login]').forEach(b => b.onclick = () => { track('conta-clique-entrar'); flushSave(); location.href = '/api/auth/google'; });
+  $('acctSync').onclick = () => acctSync(true);
+  $('acctOut').onclick = async () => {
+    flushSave();
+    if (syncMeta().dirty) await acctPush();
+    try { await acctApi('/api/account?a=logout', { method: 'POST' }); } catch (e) {}
+    acct.user = null; acct.error = null; setSyncMeta({}); renderAcct(); showToast('Você saiu da conta. Os dados continuam neste aparelho.');
+  };
+  $('acctDel').onclick = () => { $('acctDel').hidden = true; $('acctDelAsk').hidden = false; };
+  $('acctDelNo').onclick = () => { $('acctDelAsk').hidden = true; renderAcct(); };
+  $('acctDelYes').onclick = async () => {
+    try { await acctApi('/api/account', { method: 'DELETE' }); acct.user = null; setSyncMeta({}); $('acctDelAsk').hidden = true; renderAcct(); showToast('Dados da conta apagados. Os deste aparelho continuam aqui.'); }
+    catch (e) { showToast(e.message, true); }
+  };
+  // Ao voltar para o app, traz o que mudou em outro aparelho.
+  let lastAcct = 0;
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && acct.user && Date.now() - lastAcct > 60 * 1000) { lastAcct = Date.now(); acctSync(); } });
+
   function showToast(text, bad) {
     let el = $('toast'); if (!el) { el = document.createElement('div'); el.id = 'toast'; el.className = 'toast'; document.body.appendChild(el); }
     el.textContent = text; el.classList.toggle('bad', !!bad); el.hidden = false;
@@ -310,7 +452,7 @@
     } else if (view === 'plano' && plan) sub = `${planSource === 'exemplo' ? 'Plano de exemplo · ' : ''}Para ${planRaceLabel()} em ${ddmm(raceISO())} · ${plan.weeks.length} semanas`;
     else if (view === 'progresso' && plan) { const n = Math.max(0, Math.ceil((new Date(raceISO() + 'T05:30:00-03:00') - Date.now()) / 864e5)); sub = n ? `${n} dias para a prova` : 'Dia de prova'; }
     else if (view === 'provas') { const n = allRaces().filter(r => r.date >= today).length; sub = n ? `${n} prova${n > 1 ? 's' : ''} pela frente` : 'Seu calendário de provas'; }
-    else if (view === 'ajustes') sub = strava.connected ? 'Strava conectado' : 'Strava, plano e preferências';
+    else if (view === 'ajustes') sub = strava.connected ? 'Strava conectado' : 'Conta, Strava, plano e preferências';
     $('pageTitle').textContent = title;
     $('pageSub').textContent = sub;
     const inRange = today >= minDay() && today <= lastDay();
@@ -2092,7 +2234,7 @@
     document.querySelectorAll('[data-no-plan]').forEach(el => { el.hidden = has; });
     document.querySelectorAll('[data-needs-plan]').forEach(el => { el.hidden = !has; });
     if (has) { renderSummary(); renderAdjust(); renderWorkout(); renderDiet(); renderPlan(); renderRace(); renderTest(); renderWeekSum(); renderNext(); renderRecent(); }
-    renderProgress(); renderVolume(); renderCadence(); renderZones(); renderWeight(); renderWxSettings(); renderSettings(); renderHr(); renderInstall(); renderUpdate(); renderRaces(); renderWelcome(); bindStravaButtons(); route();
+    renderProgress(); renderVolume(); renderCadence(); renderZones(); renderWeight(); renderWxSettings(); renderSettings(); renderHr(); renderInstall(); renderUpdate(); renderRaces(); renderWelcome(); renderAcct(); bindStravaButtons(); route();
   }
   function bindStravaButtons() {
     document.querySelectorAll('[data-strava-connect]').forEach(b => {
@@ -2121,14 +2263,21 @@
 
   (async function boot() {
     const params = new URLSearchParams(location.search);
-    const q = params.get('strava');
-    if (q) history.replaceState(null, '', '/' + location.hash);
+    const q = params.get('strava'), qc = params.get('conta');
+    if (q || qc) history.replaceState(null, '', '/' + location.hash);
     loadState();
     if (!plan && !extra.fresh) { try { applyPlanMd(await examplePlanMd(), 'exemplo'); } catch (e) {} }
     if (plan) { clampSelected(); if (plan.race > today) $('gRace').value = plan.race; if (plan.goalSec) $('gGoal').value = A.fmtTime(plan.goalSec); }
     renderAll();
     fetchVer().then(v => { appVer = v; renderUpdate(); });
     loadWx().then(() => { if (plan) renderWorkout(); });
+    // Conta antes do Strava: assim este aparelho recebe a versão da nuvem antes de analisar os treinos.
+    await checkAccount();
+    if (acct.user) { lastAcct = Date.now(); await acctSync(false); }
+    renderAcct();
+    if (qc === 'ok' && acct.user) track('conta-entrou');
+    if (qc === 'erro') showToast('Não consegui entrar com o Google. Tente de novo.', true);
+    if (qc === 'config') showToast('O login com Google ainda não foi configurado neste site.', true);
     if (extra.wx && extra.wx.name === 'sua localização') placeName(extra.wx.lat, extra.wx.lon).then(n => { if (n) { extra.wx = { ...extra.wx, name: n }; persist(); renderAll(); } });
     await checkStrava();
     renderSettings();

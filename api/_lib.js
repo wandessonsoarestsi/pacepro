@@ -1,5 +1,6 @@
-// Funções comuns da integração com o Strava. A conexão fica num cookie criptografado,
-// só no navegador que conectou. Não há login nem banco de dados.
+// Funções comuns das funções do Vercel. A conexão com o Strava fica num cookie criptografado,
+// só no navegador que conectou. A conta (login com Google) fica em outro cookie criptografado
+// e os dados da conta ficam num banco Redis (Upstash).
 const crypto = require('crypto');
 
 const STRAVA = 'https://www.strava.com';
@@ -84,8 +85,42 @@ async function strava(path, s) {
 }
 
 function fail(res, e) {
-  const status = [400, 401, 429, 502].includes(e.status) ? e.status : 500;
+  const status = [400, 401, 409, 413, 429, 502].includes(e.status) ? e.status : 500;
   res.status(status).json({ error: e.message || 'Erro inesperado' });
 }
 
-module.exports = { STRAVA, NONCE, seal, open, readCookie, cookie, addCookie, setSession, baseUrl, needConfig, tokenRequest, getAccess, strava, fail };
+/* ---------- Conta (login com Google) ---------- */
+const USER = 'pp_user';
+function getUser(req) {
+  const raw = readCookie(req, USER);
+  const u = raw && open(raw);
+  return u && u.sub ? u : null;
+}
+function setUser(res, u) {
+  addCookie(res, cookie(USER, u ? seal(u) : '', u ? 60 * 60 * 24 * 365 : 0));
+}
+
+// Banco Redis pela API REST da Upstash (é o que a Vercel instala em Storage). Sem pacotes extras.
+function dbConf() {
+  const url = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
+  return url && token ? { url: url.replace(/\/$/, ''), token } : null;
+}
+// Recebe uma lista de comandos, ex.: [['GET', 'a'], ['SET', 'b', '1']]. Devolve os resultados na mesma ordem.
+async function db(cmds) {
+  const c = dbConf();
+  if (!c) throw Object.assign(new Error('Banco de dados não configurado no Vercel.'), { status: 500 });
+  const r = await fetch(`${c.url}/pipeline`, {
+    method: 'POST', headers: { Authorization: `Bearer ${c.token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(cmds)
+  });
+  const j = await r.json().catch(() => null);
+  if (!r.ok || !Array.isArray(j)) throw Object.assign(new Error('Falha ao falar com o banco de dados.'), { status: 502 });
+  const bad = j.find(x => x && x.error);
+  if (bad) throw Object.assign(new Error('Erro no banco de dados.'), { status: 502 });
+  return j.map(x => x.result);
+}
+function accountConfigured() {
+  return !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && process.env.SESSION_SECRET && dbConf());
+}
+
+module.exports = { USER, getUser, setUser, db, dbConf, accountConfigured, STRAVA, NONCE, seal, open, readCookie, cookie, addCookie, setSession, baseUrl, needConfig, tokenRequest, getAccess, strava, fail };

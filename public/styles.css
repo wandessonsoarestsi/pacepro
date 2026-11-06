@@ -805,6 +805,12 @@ input,select,textarea{font-size:16px!important}
 .nitem .ndel{flex:0 0 auto;width:32px;height:32px;font-size:18px}
 .inbox-empty{padding:24px 0 20px;text-align:center}
 /* Voltar para hoje: embaixo do título, para não apertar os botões do topo */
-.today-chip{align-self:flex-start;margin-top:6px;min-height:32px;padding:5px 14px;border:0;border-radius:var(--r-pill);background:var(--sunk);color:var(--fg);font:600 var(--fs-sm)/1.2 inherit;font-family:inherit;cursor:pointer}
+.today-chip{grid-column:1/-1;justify-self:start;margin-top:4px;min-height:32px;padding:5px 14px;border:0;border-radius:var(--r-pill);background:var(--sunk);color:var(--fg);font-family:inherit;font-size:var(--fs-sm);font-weight:600;line-height:1.2;cursor:pointer}
+/* Título e botões na primeira linha; data e "Voltar para hoje" ocupam a largura toda embaixo. */
+.tb-row{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:12px;row-gap:2px;align-items:center}
+.tb-title{display:contents}
+.tb-title h1{grid-column:1;grid-row:1}
+.tb-actions{grid-column:2;grid-row:1}
+.tb-title small{grid-column:1/-1}
 .today-chip:hover{background:color-mix(in srgb,var(--fg) 10%,var(--sunk))}
 .today-chip[hidden]{display:none}

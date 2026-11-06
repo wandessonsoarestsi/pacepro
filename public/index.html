@@ -26,9 +26,8 @@
 <div class="app" id="app">
   <header class="topbar">
     <div class="tb-row">
-      <div class="tb-title"><h1 id="pageTitle">Início</h1><small id="pageSub"></small></div>
+      <div class="tb-title"><h1 id="pageTitle">Início</h1><small id="pageSub"></small><button class="today-chip" id="goToday" type="button" hidden>Voltar para hoje</button></div>
       <div class="tb-actions">
-        <button class="btn sm ghost" id="goToday" type="button" hidden>Voltar para hoje</button>
         <button class="round sync" id="syncBtn" type="button" aria-label="Sincronizar com o Strava"><svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.5-4.6L4 8M4 4v4h4M4 13a8 8 0 0 0 14.5 4.6L20 16M20 20v-4h-4"/></svg><i class="sdot" id="syncDot"></i></button>
         <button class="round bell" id="bellBtn" type="button" aria-label="Notificações" aria-haspopup="dialog" aria-expanded="false"><svg viewBox="0 0 24 24"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/></svg><i class="bcount" id="bellCount" hidden></i></button>
         <a class="me" id="meChip" href="#ajustes" hidden><span class="me-pic" id="mePic" aria-hidden="true"></span><span class="me-name" id="meName"></span></a>

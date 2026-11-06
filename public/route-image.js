@@ -1,12 +1,21 @@
 /* Imagem do percurso para compartilhar: mapa claro ou arte da rota (sem mapa), momentos marcados
    no trajeto, corredor fantasma (melhor vez no mesmo percurso), comparação com o mesmo treino de
-   semanas atrás e previsão de prova. Formato feed (4:5) ou stories (9:16). Sempre em tema claro. */
+   semanas atrás e previsão de prova. Formato feed (4:5) ou stories (9:16). Mapa claro, arte escura ou fundo transparente. */
 (function (root) {
   const W = 1080, PR = 2;
-  let INK, MUTED, LINE, GOOD, BAD, TEAL, ORANGE, GHOSTT, CLEAR = false;
-  // Tema: claro (fundo de mapa ou arte) ou transparente (texto branco com sombra, para pôr sobre uma foto).
-  function theme(clear) { CLEAR = clear; INK = clear ? '#FFFFFF' : '#14171C'; MUTED = clear ? 'rgba(255,255,255,.88)' : '#6B7280'; LINE = clear ? 'rgba(255,255,255,.45)' : '#E4E7EB'; GOOD = clear ? '#4BE3A0' : '#22A06B'; BAD = clear ? '#FF7A70' : '#D6453D'; TEAL = clear ? '#7FE6DC' : '#128C83'; ORANGE = clear ? '#FFB36B' : '#F08A24'; GHOSTT = clear ? '#C9BBFF' : '#7A5AF8'; }
-  theme(false);
+  let INK, MUTED, LINE, GOOD, BAD, TEAL, ORANGE, GHOSTT, CARD, CHIP, TRACK, CLEAR = false, DARK = false;
+  const LIME = '#C6F135';
+  // Tema: claro (mapa), escuro (arte da rota, no visual do app) ou transparente (texto branco com sombra, para pôr sobre uma foto).
+  function theme(mode) {
+    CLEAR = mode === 'clear'; DARK = mode === 'dark'; const lt = !CLEAR && !DARK;
+    INK = lt ? '#14171C' : '#FFFFFF'; MUTED = CLEAR ? 'rgba(255,255,255,.88)' : DARK ? 'rgba(255,255,255,.62)' : '#6B7280';
+    LINE = CLEAR ? 'rgba(255,255,255,.45)' : DARK ? 'rgba(255,255,255,.12)' : '#E4E7EB';
+    GOOD = lt ? '#1D8A59' : '#5ED68E'; BAD = lt ? '#D6453D' : '#FF7A70'; TEAL = lt ? '#4A7300' : LIME;
+    ORANGE = lt ? '#E46F1B' : '#FFAE6E'; GHOSTT = lt ? '#7A5AF8' : '#C9BBFF';
+    CARD = DARK ? '#16181B' : '#fff'; TRACK = DARK ? '#2A2E33' : '#EEF0F3';
+    CHIP = DARK ? { good: '#173A26', bad: '#3A1B19', n: '#202328' } : { good: '#DDF3E8', bad: '#F9DEDC', n: '#EEF0F3' };
+  }
+  theme('light');
   const GHOST = '#7A5AF8';
   const pad = n => String(n).padStart(2, '0');
   const fmtT = s => { s = Math.max(0, Math.round(s)); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60; return h ? `${h}:${pad(m)}:${pad(x)}` : `${m}:${pad(x)}`; };
@@ -57,7 +66,7 @@
     };
     const plain = (t, x, y, size, weight, color) => { ctx.font = font(weight, size); ctx.fillStyle = color; ctx.textAlign = 'left'; ctx.fillText(t, x, y); return ctx.measureText(t).width; };
     const fit = (t, maxW, size, weight) => { let s = size; ctx.font = font(weight, s); while (s > 18 && ctx.measureText(t).width > maxW) { s -= 2; ctx.font = font(weight, s); } return s; };
-    const card = (x, y, w, h) => { if (CLEAR) return; ctx.save(); ctx.shadowColor = 'rgba(20,23,28,.14)'; ctx.shadowBlur = 30; ctx.shadowOffsetY = 8; rr(x, y, w, h, 30); ctx.fillStyle = '#fff'; ctx.fill(); ctx.restore(); };
+    const card = (x, y, w, h) => { if (CLEAR) return; ctx.save(); ctx.shadowColor = 'rgba(20,23,28,.14)'; ctx.shadowBlur = 30; ctx.shadowOffsetY = 8; rr(x, y, w, h, 30); ctx.fillStyle = CARD; ctx.fill(); ctx.restore(); };
     function lines(t, maxW, size, weight, max) {
       ctx.font = font(weight, size); const out = []; let line = '';
       for (const w of String(t).split(' ')) { const test = line ? line + ' ' + w : w; if (ctx.measureText(test).width > maxW && line) { out.push(line); line = w; } else line = test; }
@@ -103,7 +112,7 @@
             txt(sub, X + 124, y + 102, fit(sub, CWd - 150, 24, 600), 600, MUTED);
             if (kms.length) {
               const cw = (CWd - 64 - (kms.length - 1) * 8) / kms.length;
-              kms.forEach((k, j) => { const x = X + 32 + j * (cw + 8); rr(x, y + 128, cw, 42, 21); ctx.fillStyle = CLEAR ? 'rgba(0,0,0,.32)' : k.diff < 0 ? '#DDF3E8' : k.diff > 0 ? '#F9DEDC' : '#EEF0F3'; ctx.fill(); const t = `km ${k.k} ${k.diff > 0 ? '+' : k.diff < 0 ? '−' : '±'}${Math.abs(k.diff)}s`; txt(t, x + cw / 2, y + 157, fit(t, cw - 10, 22, 700), 700, k.diff < 0 ? GOOD : k.diff > 0 ? BAD : MUTED, 'center'); });
+              kms.forEach((k, j) => { const x = X + 32 + j * (cw + 8); rr(x, y + 128, cw, 42, 21); ctx.fillStyle = CLEAR ? 'rgba(0,0,0,.32)' : k.diff < 0 ? CHIP.good : k.diff > 0 ? CHIP.bad : CHIP.n; ctx.fill(); const t = `km ${k.k} ${k.diff > 0 ? '+' : k.diff < 0 ? '−' : '±'}${Math.abs(k.diff)}s`; txt(t, x + cw / 2, y + 157, fit(t, cw - 10, 22, 700), 700, k.diff < 0 ? GOOD : k.diff > 0 ? BAD : MUTED, 'center'); });
             }
           } });
         }
@@ -114,7 +123,7 @@
             txt('PREVISÃO DE PROVA', X + 32, y + 50, 22, 800, ORANGE);
             txt(p.big, X + 32, y + 98, fit(p.big, CWd - 64, 42, 800), 800, INK);
             if (p.small) txt(p.small, X + 32, y + 134, fit(p.small, CWd - 64, 25, 600), 600, p.ok ? GOOD : MUTED);
-            if (p.pct != null) { rr(X + 32, y + 150, CWd - 64, 12, 6); ctx.fillStyle = CLEAR ? 'rgba(255,255,255,.3)' : '#EEF0F3'; ctx.fill(); rr(X + 32, y + 150, Math.max(12, (CWd - 64) * p.pct), 12, 6); ctx.fillStyle = p.ok ? GOOD : '#F08A24'; ctx.fill(); }
+            if (p.pct != null) { rr(X + 32, y + 150, CWd - 64, 12, 6); ctx.fillStyle = CLEAR ? 'rgba(255,255,255,.3)' : TRACK; ctx.fill(); rr(X + 32, y + 150, Math.max(12, (CWd - 64) * p.pct), 12, 6); ctx.fillStyle = p.ok ? GOOD : ORANGE; ctx.fill(); }
           } });
         }
       }
@@ -173,11 +182,11 @@
       ctx.lineCap = 'round'; ctx.lineJoin = 'round';
       const path = () => { ctx.beginPath(); P.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); };
       if (art) { // ecos suaves da rota, estilo pôster
-        [[64, .05], [44, .07], [28, .1]].forEach(([w, a]) => { path(); ctx.strokeStyle = `rgba(18,140,131,${a})`; ctx.lineWidth = w; ctx.stroke(); });
+        [[64, .05], [44, .07], [28, .1]].forEach(([w, a]) => { path(); ctx.strokeStyle = `rgba(198,241,53,${a})`; ctx.lineWidth = w; ctx.stroke(); });
       }
       if (CLEAR) { ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 16; path(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 20; ctx.stroke(); ctx.restore(); }
       path(); ctx.strokeStyle = '#fff'; ctx.lineWidth = art ? 22 : 20; ctx.stroke();
-      path(); ctx.strokeStyle = 'rgba(20,23,28,.18)'; ctx.lineWidth = art ? 18 : 16; ctx.stroke();
+      path(); ctx.strokeStyle = DARK ? 'rgba(0,0,0,.35)' : 'rgba(20,23,28,.18)'; ctx.lineWidth = art ? 18 : 16; ctx.stroke();
       ctx.lineWidth = art ? 13 : 11;
       let s = 0;
       for (let i = 1; i <= n; i++) if (i === n || cols[i] !== cols[s]) { ctx.beginPath(); for (let k = s; k <= Math.min(i, n - 1); k++) (k === s ? ctx.moveTo : ctx.lineTo).call(ctx, P[k][0], P[k][1]); ctx.strokeStyle = cols[s]; ctx.stroke(); s = i; }
@@ -209,7 +218,7 @@
       const k = size / 700; ctx.save(); ctx.translate(cx, cy); ctx.scale(k, k); ctx.rotate(-20 * Math.PI / 180); ctx.translate(-512, -420);
       ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 20;
       ctx.fillStyle = '#fff'; ctx.fill(FOOT[0]); ctx.beginPath(); ctx.ellipse(410, 700, 62, 80, 0, 0, 7); ctx.fill();
-      ctx.fillStyle = '#F08A24'; ctx.fill(FOOT[1]); ctx.beginPath(); ctx.ellipse(670, 520, 62, 80, 0, 0, 7); ctx.fill();
+      ctx.fillStyle = LIME; ctx.fill(FOOT[1]); ctx.beginPath(); ctx.ellipse(670, 520, 62, 80, 0, 0, 7); ctx.fill();
       ctx.restore();
     }
     function pin(x, y, r, color, ico) {
@@ -245,8 +254,8 @@
     function legend(items, x, y) {
       if (!items || !items.length) return;
       ctx.font = font(700, 22); let w = 28; items.forEach(([, l]) => { w += 30 + ctx.measureText(l).width + 18; });
-      ctx.save(); ctx.shadowColor = 'rgba(20,23,28,.12)'; ctx.shadowBlur = 10; rr(x, y, w, 44, 22); ctx.fillStyle = 'rgba(255,255,255,.94)'; ctx.fill(); ctx.restore();
-      let cx = x + 18; items.forEach(([c, l]) => { ctx.beginPath(); ctx.arc(cx + 9, y + 22, 9, 0, 7); ctx.fillStyle = c; ctx.fill(); cx += 26; cx += plain(l, cx, y + 30, 22, 700, '#6B7280') + 22; });
+      ctx.save(); ctx.shadowColor = 'rgba(20,23,28,.12)'; ctx.shadowBlur = 10; rr(x, y, w, 44, 22); ctx.fillStyle = DARK ? 'rgba(32,35,40,.94)' : 'rgba(255,255,255,.94)'; ctx.fill(); ctx.restore();
+      let cx = x + 18; items.forEach(([c, l]) => { ctx.beginPath(); ctx.arc(cx + 9, y + 22, 9, 0, 7); ctx.fillStyle = c; ctx.fill(); cx += 26; cx += plain(l, cx, y + 30, 22, 700, DARK ? 'rgba(255,255,255,.75)' : '#6B7280') + 22; });
     }
 
     async function render() {
@@ -268,7 +277,7 @@
       } catch (e) { if (my !== job) return; st.bg = 'art'; syncSeg(); $('.vs-msg').textContent = e.message || 'Não consegui carregar o mapa. Mostrei a arte da rota.'; }
       if (my !== job || closed) return;
       if (st.bg !== 'map') P = artProj(rect);
-      theme(st.bg === 'clear');
+      theme(st.bg === 'clear' ? 'clear' : st.bg === 'art' ? 'dark' : 'light');
       $('.is-stage').classList.toggle('clear', st.bg === 'clear');
       // fundo
       if (st.bg === 'clear') ctx.clearRect(0, 0, W, H);
@@ -278,8 +287,9 @@
         let g = ctx.createLinearGradient(0, 0, 0, top + 60); g.addColorStop(0, 'rgba(255,255,255,.97)'); g.addColorStop(0.7, 'rgba(255,255,255,.85)'); g.addColorStop(1, 'rgba(255,255,255,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, top + 60);
         const by = rect.y + rect.h; g = ctx.createLinearGradient(0, by - 40, 0, by + 80); g.addColorStop(0, 'rgba(242,243,245,0)'); g.addColorStop(1, 'rgba(242,243,245,.96)'); ctx.fillStyle = g; ctx.fillRect(0, by - 40, W, H - by + 40);
       } else {
-        const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#FBF8F3'); g.addColorStop(1, '#EFEBE3'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-        ctx.fillStyle = 'rgba(20,23,28,.07)'; for (let x = 36; x < W; x += 48) for (let y = 36; y < H; y += 48) { ctx.beginPath(); ctx.arc(x, y, 2, 0, 7); ctx.fill(); }
+        const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#16190F'); g.addColorStop(1, '#0A0B0D'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+        const rg = ctx.createRadialGradient(W, 0, 0, W, 0, W * 1.1); rg.addColorStop(0, 'rgba(198,241,53,.16)'); rg.addColorStop(1, 'rgba(198,241,53,0)'); ctx.fillStyle = rg; ctx.fillRect(0, 0, W, H);
+        ctx.fillStyle = 'rgba(255,255,255,.06)'; for (let x = 36; x < W; x += 48) for (let y = 36; y < H; y += 48) { ctx.beginPath(); ctx.arc(x, y, 2, 0, 7); ctx.fill(); }
       }
       // Transparente: vinheta preta suave atrás da rota e dos dados, para destacar em fotos claras.
       let brandY = 0;
@@ -309,7 +319,7 @@
       // cartões
       let y = cardsTop;
       B.forEach(b => { b.draw(y); y += b.h + gap; });
-      txt(st.bg === 'map' ? 'mapa © OpenStreetMap · dados: Strava' : 'dados: Strava', W / 2, H - 22, 20, 600, CLEAR ? 'rgba(255,255,255,.75)' : 'rgba(20,23,28,.45)', 'center');
+      txt(st.bg === 'map' ? 'mapa © OpenStreetMap · dados: Strava' : 'dados: Strava', W / 2, H - 22, 20, 600, CLEAR ? 'rgba(255,255,255,.75)' : DARK ? 'rgba(255,255,255,.45)' : 'rgba(20,23,28,.45)', 'center');
       busy(false);
     }
     function syncSeg() {

@@ -2,6 +2,8 @@
 (function () {
   const A = window.Analysis, P = window.PlanParser;
   const $ = id => document.getElementById(id);
+  // Tira os emojis do texto do plano na hora de mostrar (o arquivo .md continua com eles, que servem de marcador).
+  const noEmoji = t => String(t || '').replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{26FF}]\uFE0F?\s*/gu, '');
   // Cor da barra do celular acompanha o fundo do tema escolhido.
   function syncThemeColor() {
     const m = document.querySelector('meta[name="theme-color"]'); if (!m) return;
@@ -554,7 +556,7 @@
     let title = VIEW_TITLE[view], sub = '';
     if (view === 'hoje' && plan) {
       const first = acct.user ? String(acct.user.name || '').trim().split(/\s+/)[0] : '';
-      title = selected === today ? (first ? `Olá, ${first} 👋` : 'Olá! 👋') : selected === addDays(today, 1) ? 'Amanhã' : selected === addDays(today, -1) ? 'Ontem' : WDL[d.getDay()];
+      title = selected === today ? (first ? `Olá, ${first}` : 'Olá!') : selected === addDays(today, 1) ? 'Amanhã' : selected === addDays(today, -1) ? 'Ontem' : WDL[d.getDay()];
       const day = dayAt(selected);
       sub = `${WDL[d.getDay()]}, ${d.getDate()} de ${MON[d.getMonth()]}${day && day.week ? ` · semana ${day.week} de ${plan.weeks.length}` : day && day.recovery ? ` · recuperação, dia ${day.recovery} de 7` : ''}`;
     } else if (view === 'plano' && plan) sub = `${planSource === 'exemplo' ? 'Plano de exemplo · ' : ''}Para ${planRaceLabel()} em ${ddmm(raceISO())} · ${plan.weeks.length} semanas`;
@@ -704,14 +706,14 @@
     }
     html += `<div class="blocks">`;
     if (isRun) {
-      html += `<div class="blk run"><span class="k">Corrida</span><dl class="kv"><dt>Rua</dt><dd>${esc(day.rua)}</dd>${day.esteira ? `<dt>Esteira</dt><dd>${esc(day.esteira)}${/\d$/.test(day.esteira) ? ' km/h' : ''}${/\d/.test(day.esteira) ? ' · incl. 1%' : ''}</dd>` : ''}</dl>` +
+      html += `<div class="blk run"><span class="k">Corrida</span><dl class="kv"><dt>Rua</dt><dd>${esc(noEmoji(day.rua))}</dd>${day.esteira ? `<dt>Esteira</dt><dd>${esc(day.esteira)}${/\d$/.test(day.esteira) ? ' km/h' : ''}${/\d/.test(day.esteira) ? ' · incl. 1%' : ''}</dd>` : ''}</dl>` +
         (day.paceFrom ? `<p class="note"><b>Ritmo atualizado pelo teste</b> (antes ${A.fmtPace(day.paceFrom)}/km).</p>` : day.paceNew ? '<p class="note"><b>Ritmo-alvo calculado pelo seu teste.</b></p>' : '') +
         `<p class="note">${TIP[day.type] || ''} Aquecimento 10' leve e desaquecimento 5–10'.</p></div>`;
       if (!st && day.date >= addDays(today, -1)) html += wxBlock(day);
     }
     if (isCross(day.type)) html += `<div class="blk swim"><span class="k">${esc(TYPE_LABEL[day.type])}</span><b>${esc(day.title)}</b><p class="note">${CROSS_TIP[day.type]}</p></div>`;
     if (day.gym) html += gymBlock(day.gym, day, !isRun && !isCross(day.type));
-    if (day.type === 'rest' && !day.gym) html += `<p class="muted">${esc(day.rua && !/^descanso$/i.test(day.rua) ? day.rua : 'Descanso total. Sono, água e boa comida.')}</p>`;
+    if (day.type === 'rest' && !day.gym) html += `<p class="muted">${esc(day.rua && !/^descanso$/i.test(day.rua) ? noEmoji(day.rua) : 'Descanso total. Sono, água e boa comida.')}</p>`;
     const adj = day.movedFrom ? `Treino de ${WD[D(day.movedFrom).getDay()]} ${ddmm(day.movedFrom)} remarcado para hoje.` : day.movedTo ? '' : day.skipped ? '' : day.softened ? `Era "${day.softened}". Trocado por leve para recuperar.` : '';
     if (day.movedFrom || day.movedTo || day.skipped || day.softened) html += `<div class="blk adj"><span class="k">Plano ajustado</span>${adj ? `<p class="note">${esc(adj)}</p>` : ''}<button class="linkbtn" id="undoAdj" type="button">Desfazer ajuste</button></div>`;
     if (!st) html += raceDayBlock(day);
@@ -944,11 +946,11 @@
     const moments = [];
     const at = i => pts[Math.max(0, Math.min(s.n - 1, i))];
     if (ins.fastestKm) moments.push({ ico: 'K', cls: 'k', i: ins.fastestKm.i0, i1: ins.fastestKm.i1, t: 'Km mais rápido', d: `km ${ins.fastestKm.k} em ${RI.fmtPace(ins.fastestKm.sec)}`, s: `Km mais rápido ${RI.fmtPace(ins.fastestKm.sec)}` });
-    if (ins.peak) moments.push({ ico: '⚡', cls: 'v', i: ins.peak.i, t: 'Pico de velocidade', s: `Pico ${RI.fmtPace(ins.peak.pace)}/km`, d: `${RI.fmtPace(ins.peak.pace)}/km (${(ins.peak.v * 3.6).toFixed(1).replace('.', ',')} km/h) no km ${RI.kmTxt(s.d[ins.peak.i])}` });
-    if (ins.maxHr) moments.push({ ico: '♥', cls: 'h', i: ins.maxHr.i, t: 'FC mais alta', s: `FC máx. ${ins.maxHr.hr}`, d: `${ins.maxHr.hr} bpm no km ${RI.kmTxt(s.d[ins.maxHr.i])}` });
+    if (ins.peak) moments.push({ ico: 'V', cls: 'v', i: ins.peak.i, t: 'Pico de velocidade', s: `Pico ${RI.fmtPace(ins.peak.pace)}/km`, d: `${RI.fmtPace(ins.peak.pace)}/km (${(ins.peak.v * 3.6).toFixed(1).replace('.', ',')} km/h) no km ${RI.kmTxt(s.d[ins.peak.i])}` });
+    if (ins.maxHr) moments.push({ ico: 'FC', cls: 'h', i: ins.maxHr.i, t: 'FC mais alta', s: `FC máx. ${ins.maxHr.hr}`, d: `${ins.maxHr.hr} bpm no km ${RI.kmTxt(s.d[ins.maxHr.i])}` });
     if (ins.climb) moments.push({ ico: '▲', cls: 'c', i: ins.climb.i0, i1: ins.climb.i1, t: 'Maior subida', s: `Subida +${Math.round(ins.climb.gain)} m`, d: `+${Math.round(ins.climb.gain)} m em ${Math.round(ins.climb.dist)} m (${Math.round(ins.climb.grade * 100)}%) a partir do km ${RI.kmTxt(s.d[ins.climb.i0])}` });
     if (ins.fatigue) moments.push({ ico: '!', cls: 'f', i: ins.fatigue.i, t: `Aqui você cansou (km ${RI.kmTxt(ins.fatigue.dist)})`, s: 'Aqui você cansou', d: ins.fatigue.tip });
-    if (ins.ghost && ins.ghost.bestI != null && ins.ghost.bestLead > 0) moments.push({ ico: '👻', cls: 'g', i: ins.ghost.bestI, t: 'Maior vantagem sobre o fantasma', d: `${ins.ghost.bestLead} s à frente de ${ddmm(g.date)} no km ${RI.kmTxt(s.d[ins.ghost.bestI])}` });
+    if (ins.ghost && ins.ghost.bestI != null && ins.ghost.bestLead > 0) moments.push({ ico: 'F', cls: 'g', i: ins.ghost.bestI, t: 'Maior vantagem sobre o fantasma', d: `${ins.ghost.bestLead} s à frente de ${ddmm(g.date)} no km ${RI.kmTxt(s.d[ins.ghost.bestI])}` });
     const repRows = ins.reps.map(r => ({ ico: String(r.n), cls: 'r ' + r.tone, i: r.i0, i1: r.i1, t: `Tiro ${r.n} · ${Math.round(r.dist / 10) * 10} m`, d: `${RI.fmtPace(r.pace)}/km${r.target ? ` (alvo ${RI.fmtPace(r.target)})` : ''}${r.hr ? ` · FC ${Math.round(r.hr)}` : ''}`, tone: r.tone }));
     const gh = ins.ghost;
     const ghostHtml = gh ? `<div class="rt-ghost"><span class="eyebrow">Corredor fantasma</span><p class="muted small rt-gx">O fantasma é você mesmo na última vez que correu este percurso. O app compara, no mesmo tempo de corrida, onde você está hoje e onde estava naquele dia.</p><b>${gh.final < 0 ? `${-gh.final} s mais rápido` : gh.final > 0 ? `${gh.final} s mais lento` : 'Mesmo tempo'}</b> que em ${ddmm(g.date)} no mesmo percurso` +
@@ -1121,7 +1123,7 @@
   }
   $('openFull').onclick = () => {
     const fp = $('fullPlan');
-    if (fp.hidden) { fp.innerHTML = window.marked ? window.marked.parse(plan.raw) : `<pre style="white-space:pre-wrap">${esc(plan.raw)}</pre>`; fp.hidden = false; $('openFull').textContent = 'Esconder o plano completo'; }
+    if (fp.hidden) { fp.innerHTML = window.marked ? window.marked.parse(noEmoji(plan.raw)) : `<pre style="white-space:pre-wrap">${esc(plan.raw)}</pre>`; fp.hidden = false; $('openFull').textContent = 'Esconder o plano completo'; }
     else { fp.hidden = true; $('openFull').textContent = 'Ver o plano completo'; }
   };
 
@@ -1526,7 +1528,7 @@
       `<div class="race-sched"><label for="rStart">Horário da largada<input id="rStart" type="time" value="${raceCfg().start}"></label><button class="btn ghost" id="rmOpen2" type="button">Tela da prova</button></div>` +
       `<details class="race"${raceDays() <= 3 ? ' open' : ''}><summary>Horários do dia</summary>${timelineHtml()}</details>` +
       `<details class="race"${raceDays() <= 3 ? ' open' : ''}><summary>Checklist da véspera e do dia</summary>${raceChecksHtml()}</details>` +
-      (sec && window.marked ? `<details class="prose"><summary>Estratégia do seu plano</summary>${window.marked.parse(sec)}</details>` : '');
+      (sec && window.marked ? `<details class="prose"><summary>Estratégia do seu plano</summary>${window.marked.parse(noEmoji(sec))}</details>` : '');
     bindRaceChecks(box);
     $('rmOpen2').onclick = openRaceMode;
     $('rStart').onchange = () => { const v = $('rStart').value; if (!/^\d{2}:\d{2}$/.test(v)) return; extra.race = { ...raceCfg(), start: v }; persist(); renderAll(); };

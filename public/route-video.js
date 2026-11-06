@@ -4,6 +4,7 @@
   const STYLE = 'https://tiles.openfreemap.org/styles/positron';
   const DEM = 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png';
   const CW = 360, CH = 640, PR = 2, W = CW * PR, H = CH * PR; // saída 720×1280
+  const LIME = '#C6F135', LIME_INK = '#141A00'; // cor da marca
   const T_INTRO = 2200, T_RUN = 11000, T_HOLD = 1700, T_OUTRO = 3400, FPS = root.__vsFPS || 30;
 
   let mlP = null;
@@ -134,7 +135,7 @@
     const txt = (t, x, y, size, weight, color, align) => { ctx.font = `${weight || 700} ${size}px ${font}`; ctx.fillStyle = color || '#fff'; ctx.textAlign = align || 'left'; ctx.fillText(t, x, y); };
     function pin(x, y, r, color, ico) { ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.45)'; ctx.shadowBlur = 10; ctx.beginPath(); ctx.arc(x, y, r + 4, 0, 7); ctx.fillStyle = '#fff'; ctx.fill(); ctx.restore(); ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = color; ctx.fill(); ctx.font = `800 ${r * 1.05}px ${font}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#fff'; ctx.fillText(ico, x, y + 1); ctx.textBaseline = 'alphabetic'; }
     const kmIdx = []; for (let k = 1, i = 0; k * 1000 < d.dist[d.dist.length - 1] - 50; k++) { while (i < d.dist.length - 1 && d.dist[i] < k * 1000) i++; kmIdx.push([k, i]); }
-    function kmTag(x, y, k) { const t = `${k} km`; ctx.font = `800 22px ${font}`; const w = ctx.measureText(t).width + 22; ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.35)'; ctx.shadowBlur = 8; rr(x - w / 2, y - 17, w, 34, 17); ctx.fillStyle = '#1a1d23'; ctx.fill(); ctx.restore(); ctx.lineWidth = 3; ctx.strokeStyle = '#fff'; rr(x - w / 2, y - 17, w, 34, 17); ctx.stroke(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#fff'; ctx.fillText(t, x, y + 1); ctx.textBaseline = 'alphabetic'; }
+    function kmTag(x, y, k) { const t = `${k} km`; ctx.font = `800 22px ${font}`; const w = ctx.measureText(t).width + 22; ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.35)'; ctx.shadowBlur = 8; rr(x - w / 2, y - 17, w, 34, 17); ctx.fillStyle = LIME; ctx.fill(); ctx.restore(); ctx.lineWidth = 3; ctx.strokeStyle = '#0A0B0D'; rr(x - w / 2, y - 17, w, 34, 17); ctx.stroke(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = LIME_INK; ctx.fillText(t, x, y + 1); ctx.textBaseline = 'alphabetic'; }
     function proj(i) { const p = map.project([d.lon[i], d.lat[i]]); return [p.x * PR, p.y * PR]; }
     function compose(s) {
      
@@ -143,7 +144,7 @@
       let g = ctx.createLinearGradient(0, 0, 0, 260); g.addColorStop(0, 'rgba(0,0,0,.6)'); g.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, 260);
       g = ctx.createLinearGradient(0, H - 380, 0, H); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,.7)'); ctx.fillStyle = g; ctx.fillRect(0, H - 380, W, 380);
       // marca e data
-      txt(d.meta.brand || 'PacePro', 44, 92, 40, 900, '#fff'); txt(d.meta.date, 44, 136, 26, 600, 'rgba(255,255,255,.75)');
+      txt(d.meta.brand || 'PacePro', 44, 92, 40, 900, LIME); txt(d.meta.date, 44, 136, 26, 600, 'rgba(255,255,255,.75)');
       txt('dados: Strava', W - 40, H - 34, 20, 600, 'rgba(255,255,255,.55)', 'right');
       // Rastro colorido até o corredor (desenhado aqui para acompanhar o ponto exatamente)
       if (s.ph === 'run' || s.ph === 'hold') {
@@ -162,22 +163,22 @@
       // pinos dos momentos já alcançados
       const passed = s.ph === 'outro' || s.ph === 'intro' ? (s.ph === 'outro' ? moms.length : 0) : s.passed;
       moms.slice(0, passed).forEach(m => { if (m.km) return; const [x, y] = proj(m.i); pin(x, y, 22, m.color, m.ico); });
-      if (s.ph !== 'intro') { const p = map.project([posAt(s.m)[1], posAt(s.m)[0]]); const x = p.x * PR, y = p.y * PR; ctx.beginPath(); ctx.arc(x, y, 26, 0, 7); ctx.fillStyle = 'rgba(26,29,35,.22)'; ctx.fill(); ctx.beginPath(); ctx.arc(x, y, 15, 0, 7); ctx.fillStyle = '#1a1d23'; ctx.fill(); ctx.beginPath(); ctx.arc(x, y, 11, 0, 7); ctx.fillStyle = '#fff'; ctx.fill(); }
+      if (s.ph !== 'intro') { const p = map.project([posAt(s.m)[1], posAt(s.m)[0]]); const x = p.x * PR, y = p.y * PR; ctx.beginPath(); ctx.arc(x, y, 26, 0, 7); ctx.fillStyle = 'rgba(198,241,53,.35)'; ctx.fill(); ctx.beginPath(); ctx.arc(x, y, 15, 0, 7); ctx.fillStyle = '#0A0B0D'; ctx.fill(); ctx.beginPath(); ctx.arc(x, y, 11, 0, 7); ctx.fillStyle = LIME; ctx.fill(); }
       if (s.ph === 'intro') {
         const a = Math.min(1, s.k * 3) * (s.k > 0.75 ? (1 - s.k) * 4 : 1); ctx.globalAlpha = Math.max(0, a);
         txt(d.meta.title, W / 2, H / 2 - 20, 54, 900, '#fff', 'center'); txt(`${d.meta.km} km`, W / 2, H / 2 + 44, 34, 700, 'rgba(255,255,255,.85)', 'center'); ctx.globalAlpha = 1;
       }
       if (s.ph === 'run' || s.ph === 'hold') {
         const sec = timeAtM(s.m), km = s.m / 1000;
-        rr(40, H - 190, W - 80, 104, 26); ctx.fillStyle = 'rgba(15,17,21,.72)'; ctx.fill();
+        rr(40, H - 190, W - 80, 104, 52); ctx.fillStyle = 'rgba(10,11,13,.78)'; ctx.fill();
         const cols = [[`${km.toFixed(2).replace('.', ',')}`, 'km'], [fmtT(sec), 'tempo'], [km > 0.05 ? fmtP(sec / km) : '–', 'pace']];
-        cols.forEach(([v, l], k) => { const x = 40 + (W - 80) * (k + 0.5) / 3; txt(v, x, H - 132, 40, 800, '#fff', 'center'); txt(l, x, H - 100, 20, 600, 'rgba(255,255,255,.6)', 'center'); });
+        cols.forEach(([v, l], k) => { const x = 40 + (W - 80) * (k + 0.5) / 3; txt(v, x, H - 132, 40, 800, k ? '#fff' : LIME, 'center'); txt(l, x, H - 100, 20, 600, 'rgba(255,255,255,.6)', 'center'); });
       }
       if (s.ph === 'hold') {
         const m = moms[s.hold], fk = holdT[s.hold] / 280, a = Math.min(1, s.hk * fk, (1 - s.hk) * fk); ctx.globalAlpha = a;
         ctx.font = `600 26px ${font}`; const dl = lineSplit(m.d, W - 220);
-        const ch = Math.max(150, 120 + dl.length * 32), y = 210 + (1 - a) * 20; rr(40, y, W - 80, ch, 30); ctx.fillStyle = 'rgba(15,17,21,.85)'; ctx.fill();
-        if (m.km) { ctx.save(); rr(64, y + 40, 76, 50, 25); ctx.fillStyle = '#fff'; ctx.fill(); ctx.restore(); txt(m.ico, 102, y + 75, 28, 900, '#1a1d23', 'center'); }
+        const ch = Math.max(150, 120 + dl.length * 32), y = 210 + (1 - a) * 20; rr(40, y, W - 80, ch, 30); ctx.fillStyle = 'rgba(10,11,13,.86)'; ctx.fill();
+        if (m.km) { ctx.save(); rr(64, y + 40, 76, 50, 25); ctx.fillStyle = LIME; ctx.fill(); ctx.restore(); txt(m.ico, 102, y + 75, 28, 900, LIME_INK, 'center'); }
         else pin(100, y + 75, 32, m.color, m.ico);
         let ts = 34; ctx.font = `800 ${ts}px ${font}`; while (ts > 24 && ctx.measureText(m.t).width > W - 220) { ts -= 2; ctx.font = `800 ${ts}px ${font}`; }
         txt(m.t, 160, y + 64, ts, 800, '#fff'); dl.forEach((l, k) => txt(l, 160, y + 106 + k * 32, 26, 600, 'rgba(255,255,255,.78)'));
@@ -187,10 +188,11 @@
         const a = Math.min(1, (s.k - 0.15) * 4); ctx.globalAlpha = a;
         ctx.font = `600 26px ${font}`; const sl = summary ? lineSplit(summary, W - 160) : [];
         const h = (d.meta.ghost ? 420 : 360) + (sl.length ? sl.length * 34 + 30 : 0), y = H - h - 90;
-        rr(40, y, W - 80, h, 34); ctx.fillStyle = 'rgba(15,17,21,.86)'; ctx.fill();
-        txt(d.meta.title, 80, y + 72, 38, 900, '#fff');
+        rr(40, y, W - 80, h, 34); ctx.fillStyle = 'rgba(10,11,13,.88)'; ctx.fill();
+        rr(80, y + 26, 56, 6, 3); ctx.fillStyle = LIME; ctx.fill();
+        txt(d.meta.title, 80, y + 82, 38, 900, '#fff');
         const cells = [[d.meta.km, 'km'], [d.meta.time, 'tempo'], [d.meta.pace, 'pace /km'], [d.meta.hr ? String(d.meta.hr) : '–', 'FC média']];
-        cells.forEach(([v, l], k) => { const cx = 80 + (k % 2) * ((W - 160) / 2), cy = y + 160 + Math.floor(k / 2) * 110; txt(v, cx, cy, 56, 900, '#fff'); txt(l, cx, cy + 34, 22, 600, 'rgba(255,255,255,.6)'); });
+        cells.forEach(([v, l], k) => { const cx = 80 + (k % 2) * ((W - 160) / 2), cy = y + 160 + Math.floor(k / 2) * 110; txt(v, cx, cy, 56, 900, k ? '#fff' : LIME); txt(l, cx, cy + 34, 22, 600, 'rgba(255,255,255,.6)'); });
         if (sl.length) { ctx.fillStyle = 'rgba(255,255,255,.14)'; ctx.fillRect(80, y + 330, W - 160, 2); sl.forEach((l, k) => txt(l, 80, y + 378 + k * 34, 26, 600, 'rgba(255,255,255,.85)')); }
         if (d.meta.ghost) txt(d.meta.ghost, 80, y + h - 44, 26, 700, d.meta.ghostColor || '#3CC48A');
         ctx.globalAlpha = 1;

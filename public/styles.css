@@ -814,3 +814,18 @@ input,select,textarea{font-size:16px!important}
 .tb-title small{grid-column:1/-1}
 .today-chip:hover{background:color-mix(in srgb,var(--fg) 10%,var(--sunk))}
 .today-chip[hidden]{display:none}
+/* Progresso: destaque da prova */
+.racehero{display:flex;flex-direction:column;gap:10px;margin-bottom:12px;background:linear-gradient(160deg,color-mix(in srgb,var(--btn) 12%,var(--card)) 0%,var(--card) 60%)}
+.rh-days{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.rh-days b{font-size:clamp(52px,16vw,72px);font-weight:800;line-height:1;letter-spacing:-.04em;font-variant-numeric:tabular-nums;color:var(--fg)}
+.rh-days span{font-size:17px;font-weight:600;color:var(--fg2)}
+.rh-bar{height:12px;border-radius:999px;background:var(--sunk);overflow:hidden}
+.rh-bar i{display:block;height:100%;min-width:12px;border-radius:999px;background:var(--btn)}
+.rh-ends{display:flex;justify-content:space-between;color:var(--muted);font-size:var(--fs-cap);margin-top:-4px}
+.rh-proj{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;padding-top:14px;margin-top:4px;border-top:1px solid var(--line)}
+.rh-proj>div{display:flex;flex-direction:column;gap:2px}
+.rh-proj .lbl{font-size:var(--fs-sm);font-weight:600;color:var(--fg2)}
+.rh-proj b{font-size:clamp(40px,12vw,56px);font-weight:800;line-height:1.05;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.rh-proj b.good{color:var(--good)} .rh-proj b.warn{color:var(--warn)}
+.rh-sub{margin:0}
+[data-view="progresso"] .tiles{grid-template-columns:1fr 1fr}

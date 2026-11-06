@@ -647,13 +647,28 @@
   function renderStats(est, proj) {
     $('tEst').textContent = est ? A.fmtTime(est.sec) : '–';
     $('tEstSub').textContent = est ? `${A.fmtPace(est.sec / distKm())}/km${est.gapDays > 10 ? ' · com pausa' : ''}` : 'sem corridas';
-    $('tGoal').textContent = A.fmtTime(goalSec());
-    $('tGoalSub').textContent = `${A.fmtPace(goalSec() / distKm())}/km`;
     const lastDone = Object.entries(done).filter(([, v]) => v.analysis).sort((a, b) => b[0].localeCompare(a[0]))[0];
     if (lastDone) { $('tLast').textContent = A.fmtPace(lastDone[1].analysis.metrics.pace) ; $('tLastSub').textContent = `${ddmm(lastDone[0])} · ${lastDone[1].analysis.metrics.distKm.toFixed(1).replace('.', ',')} km`; }
     else { const r = allRuns().slice(-1)[0]; $('tLast').textContent = r ? A.fmtPace(r.sec / r.km) : '–'; $('tLastSub').textContent = r ? `${ddmm(r.date)} · ${r.km.toFixed(1).replace('.', ',')} km` : '–'; }
-    $('tProj').textContent = proj ? A.fmtTime(proj) : '–';
-    $('tProjSub').textContent = proj ? (proj <= goalSec() ? 'dentro da meta' : `${A.fmtTime(proj - goalSec())} acima da meta`) : 'sem corridas';
+    renderRaceHero(est, proj);
+  }
+  // Destaque no topo do Progresso: dias até a prova (com barra do ciclo) e a projeção para o dia da prova.
+  function renderRaceHero(est, proj) {
+    const box = $('raceHero'); if (!box || !plan) return;
+    const race = raceISO(), start = firstDay();
+    const left = Math.round((D(race) - D(today)) / 864e5), total = Math.max(1, Math.round((D(race) - D(start)) / 864e5));
+    const f = Math.min(1, Math.max(0, (D(today) - D(start)) / (D(race) - D(start) || 1)));
+    const big = left > 1 ? String(left) : left === 1 ? '1' : left === 0 ? 'Hoje' : '–';
+    const unit = left > 1 ? 'dias para a prova' : left === 1 ? 'dia para a prova' : left === 0 ? 'é dia de prova' : 'prova concluída';
+    const goal = goalSec(), ok = proj && proj <= goal, diff = proj ? Math.abs(proj - goal) : 0;
+    const gain = est && proj ? est.sec - proj : 0;
+    box.innerHTML = `<div class="rh-top"><span class="eyebrow">${esc(planRaceLabel().replace(/^./, c => c.toUpperCase()))} · ${WD[D(race).getDay()]} ${ddmm(race)}</span></div>` +
+      `<div class="rh-days"><b>${big}</b><span>${unit}</span></div>` +
+      `<div class="rh-bar" role="progressbar" aria-label="Ciclo até a prova" aria-valuemin="0" aria-valuemax="${total}" aria-valuenow="${Math.max(0, total - Math.max(0, left))}"><i style="width:${(100 * f).toFixed(1)}%"></i></div>` +
+      `<div class="rh-ends"><span>${today < start ? 'começa' : 'início'} ${ddmm(start)}</span><span>prova ${ddmm(race)}</span></div>` +
+      `<div class="rh-proj"><div><span class="lbl">Projeção no dia da prova</span><b class="${proj ? (ok ? 'good' : 'warn') : ''}">${proj ? A.fmtTime(proj) : '–'}</b></div>` +
+      `<span class="chip ${proj ? (ok ? 'good' : 'warn') : ''}">${proj ? (ok ? (diff >= 5 ? `${A.fmtTime(diff)} abaixo da meta` : 'na meta') : `${A.fmtTime(diff)} acima da meta`) : 'sem corridas'}</span></div>` +
+      `<p class="muted small rh-sub">Meta ${A.fmtTime(goal)} (${A.fmtPace(goal / distKm())}/km)${est && proj ? ` · hoje ${A.fmtTime(est.sec)}${gain > 0 ? `, ${A.fmtTime(gain)} a ganhar com o plano` : ''}` : ''}</p>`;
   }
 
   /* ---------- Treino do dia ---------- */

@@ -289,6 +289,22 @@
         </div>
       </div>
 
+      <div class="card" id="pushCard">
+        <div class="card-head"><h2>Notificações</h2><span class="chip" id="pushChip">–</span></div>
+        <p class="muted small" id="pushText">Receba o treino do dia, a contagem para a prova e o aviso quando um treino novo chegar do Strava.</p>
+        <div class="checks push-opts" id="pushOpts" hidden>
+          <label for="pTreino"><input id="pTreino" type="checkbox" data-push="treino"> Treino do dia (7h)</label>
+          <label for="pProva"><input id="pProva" type="checkbox" data-push="prova"> Contagem para a prova</label>
+          <label for="pPerdido"><input id="pPerdido" type="checkbox" data-push="perdido"> Treino-chave que ficou para trás</label>
+          <label for="pStrava"><input id="pStrava" type="checkbox" data-push="strava"> Treino novo no Strava</label>
+        </div>
+        <div class="row-actions">
+          <button class="btn" id="pushOn" type="button">Ativar notificações</button>
+          <button class="btn ghost" id="pushTest" type="button" hidden>Enviar um teste</button>
+          <button class="btn ghost" id="pushOff" type="button" hidden>Desativar</button>
+        </div>
+      </div>
+
       <div class="card" id="installCard">
         <div class="card-head"><h2>App no celular</h2><span class="chip" id="installChip">–</span></div>
         <p class="muted small" id="installText">Instale o PacePro na tela inicial: ele abre em tela cheia e funciona sem internet.</p>

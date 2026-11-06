@@ -749,3 +749,6 @@ details.rpast summary::-webkit-details-marker{display:none}
 input,select,textarea{font-size:16px!important}
 .rt-ghost .eyebrow{display:block;margin-bottom:2px}.rt-gx{margin:0 0 8px}
 #runs .lrow{grid-template-columns:48px 1fr auto}#runs .route{width:48px;height:48px}
+
+/* Notificações */
+.push-opts{flex-direction:column;gap:2px;margin:4px 0 12px}

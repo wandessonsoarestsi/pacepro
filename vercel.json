@@ -1,6 +1,7 @@
 {
   "outputDirectory": "public",
   "cleanUrls": true,
+  "crons": [{ "path": "/api/push?a=cron", "schedule": "0 10 * * *" }],
   "headers": [
     { "source": "/sw.js", "headers": [{ "key": "Cache-Control", "value": "no-cache" }, { "key": "Service-Worker-Allowed", "value": "/" }] },
     { "source": "/manifest.webmanifest", "headers": [{ "key": "Content-Type", "value": "application/manifest+json" }] }

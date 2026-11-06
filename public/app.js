@@ -292,6 +292,7 @@
   function saveNow(at) {
     store.set(userKey('state'), { plan_md: planMd, done, extra, updated_at: at || new Date().toISOString() });
     if (!at) acctChanged();
+    pushLater();
   }
   // Salva na hora ao fechar ou trocar de app, para não perder a última mudança.
   const flushSave = () => { if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; saveNow(); } if (acctTimer) { clearTimeout(acctTimer); acctTimer = null; acctPush(true); } };
@@ -1204,7 +1205,7 @@
   });
   $('stravaSync').onclick = async () => { $('stravaSync').disabled = true; await syncAndAnalyze(false, true); $('stravaSync').disabled = false; renderAll(); };
   // Desconectar: revoga o acesso no Strava e apaga deste aparelho tudo que veio de lá.
-  $('stravaOut').onclick = async () => { try { await api('/api/strava/logout', { method: 'POST' }); } catch (e) {} strava.connected = false; purgeAndSave(true); renderAll(); showToast('Strava desconectado. Os dados do Strava foram apagados deste aparelho.'); };
+  $('stravaOut').onclick = async () => { try { await api('/api/strava/logout', { method: 'POST' }); } catch (e) {} strava.connected = false; purgeAndSave(true); renderAll(); pushSync(true).catch(() => {}); showToast('Strava desconectado. Os dados do Strava foram apagados deste aparelho.'); };
   $('mdFile').onchange = async e => {
     const file = e.target.files[0]; if (!file) return;
     const msg = $('planMsg'); msg.hidden = false;
@@ -1600,6 +1601,110 @@
     if (reg.waiting && navigator.serviceWorker.controller) showUpdate();
     reg.addEventListener('updatefound', () => { const w = reg.installing; if (w) w.addEventListener('statechange', () => { if (w.state === 'installed' && navigator.serviceWorker.controller) showUpdate(); }); });
   }).catch(() => {}));
+
+  /* ---------- Notificações ---------- */
+  // Os avisos saem do servidor, mesmo com o app fechado. Para isso o aparelho manda os próximos dias do plano
+  // (data, título e tipo), a próxima prova e os dias marcados como feitos. Nada do Strava vai junto.
+  // pp.push (só neste aparelho) = { on, prefs, key: chave do servidor usada na inscrição, sent: último envio, at }
+  const PUSH_DEF = { treino: true, prova: true, perdido: true, strava: true };
+  let push = { key: null, configured: null, busy: false };
+  const pushMeta = () => store.get('pp.push', {}) || {};
+  const pushPrefs = () => ({ ...PUSH_DEF, ...(pushMeta().prefs || {}) });
+  const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window && location.protocol === 'https:';
+  const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const isStandalone = () => (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+  const swReady = () => Promise.race([navigator.serviceWorker.ready, new Promise((_, no) => setTimeout(() => no(new Error('O app ainda está carregando. Tente de novo em alguns segundos.')), 8000))]);
+  const u8 = b => { const s = atob(b.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - b.length % 4) % 4)); return Uint8Array.from(s, c => c.charCodeAt(0)); };
+  const plain = s => String(s || '').replace(/[*_`#>|]/g, '').replace(/\s+/g, ' ').trim();
+  const hashStr = s => { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return String(h); };
+  const jsonPost = (path, body) => api(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  function pushPayload(sub) {
+    const days = plan ? plan.days.filter(d => d.date >= addDays(today, -2) && d.date <= addDays(today, 21)).map(d => {
+      const gymOnly = d.type === 'rest' && d.gym && !d.movedTo && !d.skipped;
+      return { d: d.date, t: gymOnly ? `Musculação ${d.gym}` : d.title, x: gymOnly ? 'Sessão de musculação do plano. Toque para ver os exercícios.' : plain(d.rua), ty: gymOnly ? 'gym' : d.type, k: isHard(d) };
+    }) : [];
+    const r = allRaces().find(x => x.date >= today);
+    const race = r ? { d: r.date, n: r.id === 'plan' ? '' : r.name } : null;
+    const doneDays = Object.keys(done).filter(k => k[0] !== '_' && done[k] && k >= addDays(today, -3)).sort();
+    return { sub: sub.toJSON(), prefs: pushPrefs(), days, race, done: doneDays };
+  }
+  // Inscreve este aparelho (se preciso) e manda os dados dos lembretes. force: manda mesmo sem mudança.
+  async function pushSync(force) {
+    if (!pushSupported() || Notification.permission !== 'granted' || !pushMeta().on) return;
+    const reg = await swReady();
+    if (!push.key) { const j = await api('/api/push'); push.configured = !!j.configured; push.key = j.publicKey || null; }
+    if (!push.key) throw new Error('As notificações ainda não foram configuradas neste site.');
+    let sub = await reg.pushManager.getSubscription();
+    const m = pushMeta();
+    // A chave do servidor mudou: refaz a inscrição com a nova.
+    if (sub && m.key && m.key !== push.key) { await sub.unsubscribe().catch(() => {}); sub = null; }
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: u8(push.key) });
+    const body = pushPayload(sub), h = hashStr(JSON.stringify(body) + (strava.connected ? (strava.athlete && strava.athlete.id) || 's' : ''));
+    if (!force && m.key === push.key && m.sent === h && Date.now() - (m.at || 0) < 864e5) return;
+    await jsonPost('/api/push', body);
+    store.set('pp.push', { ...pushMeta(), key: push.key, sent: h, at: Date.now() });
+  }
+  // Manda as mudanças do plano alguns segundos depois de salvar (var e function: pode ser chamada antes desta linha).
+  var pushTimer = null;
+  function pushLater() { clearTimeout(pushTimer); pushTimer = setTimeout(() => pushSync(false).catch(() => {}), 4000); }
+  function renderPush() {
+    const card = $('pushCard'); if (!card) return;
+    const sup = pushSupported(), perm = sup ? Notification.permission : 'unsupported', m = pushMeta();
+    const on = sup && !!m.on && perm === 'granted', p = pushPrefs();
+    const chip = $('pushChip');
+    chip.textContent = on ? 'ligadas' : perm === 'denied' ? 'bloqueadas' : 'desligadas';
+    chip.className = on ? 'chip good' : perm === 'denied' ? 'chip warn' : 'chip';
+    const iosWeb = isIOS() && !isStandalone();
+    $('pushText').textContent = !sup && iosWeb ? 'No iPhone, as notificações só funcionam com o PacePro instalado na tela de início (veja "App no celular"). Depois, abra o app pela tela de início e ative aqui.'
+      : !sup ? 'Este navegador não recebe notificações. Use o Chrome no Android ou o app instalado no iPhone.'
+      : push.configured === false ? 'As notificações ainda não foram configuradas neste site (falta o banco de dados no Vercel).'
+      : perm === 'denied' ? 'As notificações estão bloqueadas para o PacePro. Libere nas configurações do navegador ou do celular e toque em Ativar de novo.'
+      : on ? 'Os avisos chegam neste aparelho mesmo com o app fechado. Escolha quais quer receber:'
+      : 'Receba o treino do dia, a contagem para a prova e o aviso quando um treino novo chegar do Strava.';
+    $('pushOpts').hidden = !on;
+    card.querySelectorAll('[data-push]').forEach(c => { c.checked = !!p[c.dataset.push]; });
+    const sc = $('pStrava');
+    sc.disabled = !strava.connected;
+    sc.parentElement.lastChild.textContent = strava.connected ? ' Treino novo no Strava' : ' Treino novo no Strava (conecte o Strava)';
+    $('pushOn').hidden = on || !sup || push.configured === false;
+    $('pushOn').disabled = push.busy;
+    $('pushTest').hidden = !on; $('pushTest').disabled = push.busy;
+    $('pushOff').hidden = !on;
+  }
+  $('pushOn').onclick = async () => {
+    if (!pushSupported()) { renderPush(); return; }
+    track('notificacoes-clique-ativar');
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') { renderPush(); showToast('Sem permissão para notificações. Libere nas configurações do navegador.', true); return; }
+    store.set('pp.push', { ...pushMeta(), on: true });
+    push.busy = true; renderPush();
+    try { await pushSync(true); showToast('Notificações ativadas.'); track('notificacoes-ativadas'); }
+    catch (e) { store.set('pp.push', { ...pushMeta(), on: false }); showToast(e.message || 'Não consegui ativar as notificações.', true); }
+    push.busy = false; renderPush();
+  };
+  $('pushOff').onclick = async () => {
+    store.set('pp.push', { ...pushMeta(), on: false, sent: null });
+    renderPush();
+    try {
+      const reg = await swReady(), sub = await reg.pushManager.getSubscription();
+      if (sub) { await jsonPost('/api/push?a=off', { endpoint: sub.endpoint }).catch(() => {}); await sub.unsubscribe(); }
+    } catch (e) {}
+    showToast('Notificações desativadas neste aparelho.');
+  };
+  $('pushTest').onclick = async () => {
+    push.busy = true; renderPush();
+    try {
+      await pushSync(false);
+      const sub = await (await swReady()).pushManager.getSubscription();
+      await jsonPost('/api/push?a=test', { sub: { endpoint: sub.endpoint } });
+      showToast('Teste enviado. Deve chegar em alguns segundos.');
+    } catch (e) { showToast(e.message, true); }
+    push.busy = false; renderPush();
+  };
+  document.querySelectorAll('[data-push]').forEach(c => c.onchange = () => {
+    store.set('pp.push', { ...pushMeta(), prefs: { ...pushPrefs(), [c.dataset.push]: c.checked } });
+    pushSync(true).catch(e => showToast(e.message, true));
+  });
 
   /* ---------- Ritmos recalculados pelo teste ---------- */
   const PG = window.PlanGenerator;
@@ -2379,7 +2484,7 @@
     document.querySelectorAll('[data-no-plan]').forEach(el => { el.hidden = has; });
     document.querySelectorAll('[data-needs-plan]').forEach(el => { el.hidden = !has; });
     if (has) { renderSummary(); renderAdjust(); renderWorkout(); renderDiet(); renderPlan(); renderRace(); renderTest(); renderWeekSum(); renderNext(); renderRecent(); }
-    renderProgress(); renderVolume(); renderCadence(); renderZones(); renderWeight(); renderWxSettings(); renderSettings(); renderHr(); renderInstall(); renderUpdate(); renderRaces(); renderWelcome(); renderAcct(); bindStravaButtons(); route();
+    renderProgress(); renderVolume(); renderCadence(); renderZones(); renderWeight(); renderWxSettings(); renderSettings(); renderHr(); renderInstall(); renderPush(); renderUpdate(); renderRaces(); renderWelcome(); renderAcct(); bindStravaButtons(); route();
   }
   function bindStravaButtons() {
     document.querySelectorAll('[data-strava-connect]').forEach(b => {
@@ -2431,6 +2536,7 @@
     renderAll();
     if (q === 'ok') { showToast('Strava conectado.'); track('strava-conectado'); }
     if (strava.connected) track('usuario-com-strava');
+    pushSync(false).catch(() => {}).then(renderPush);
     if (q === 'erro' || q === 'scope') { location.hash = 'ajustes'; showToast(q === 'scope' ? 'Autorize o acesso às atividades para analisar os treinos.' : 'Não consegui conectar ao Strava. Tente de novo.', true); }
     setInterval(() => { if (plan) renderSummary(); }, 60000);
   })();

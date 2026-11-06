@@ -1,5 +1,5 @@
 /* PacePro: funciona sem internet. Arquivos do site em cache; o Strava sempre pela rede. */
-const CACHE = 'pacepro-v51';
+const CACHE = 'pacepro-v52';
 const CORE = ['/', '/styles.css', '/app.js', '/plan-parser.js', '/analysis.js', '/route-map.js', '/route-video.js', '/route-image.js', '/plan-generator.js', '/plano.md', '/strava/connect-with-strava.svg', '/strava/powered-by-strava.svg',
   '/icon.svg', '/icon-192.png', '/apple-touch-icon.png', '/manifest.webmanifest',
   'https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js'];

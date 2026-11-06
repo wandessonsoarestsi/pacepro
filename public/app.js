@@ -1598,8 +1598,8 @@
 
   /* ---------- Instalar como app ---------- */
   let installEvt = null;
-  window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; renderInstall(); });
-  window.addEventListener('appinstalled', () => { installEvt = null; renderInstall(); });
+  window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; renderInstall(); renderWelcome(); });
+  window.addEventListener('appinstalled', () => { installEvt = null; renderInstall(); renderWelcome(); });
   function renderInstall() {
     const standalone = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
     const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
@@ -1618,6 +1618,9 @@
     if (reg.waiting && navigator.serviceWorker.controller) showUpdate();
     reg.addEventListener('updatefound', () => { const w = reg.installing; if (w) w.addEventListener('statechange', () => { if (w.state === 'installed' && navigator.serviceWorker.controller) showUpdate(); }); });
   }).catch(() => {}));
+
+  // Sem zoom de pinça: o Safari do iPhone ignora user-scalable=no, então o gesto é bloqueado aqui.
+  ['gesturestart', 'gesturechange'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
 
   /* ---------- Notificações ---------- */
   // Os avisos saem do servidor, mesmo com o app fechado. Para isso o aparelho manda os próximos dias do plano
@@ -2666,7 +2669,113 @@
     else { try { const j = await api('/api/strava/login'); location.href = j.url; } catch (e) { showToast(e.message, true); } }
   };
 
+  /* ---------- Passo a passo para instalar o app (boas-vindas) ---------- */
+  // Descobre o aparelho e o navegador pelo userAgent para mostrar o caminho certo.
+  function deviceInfo() {
+    const ua = navigator.userAgent || '';
+    const ios = /iphone|ipad|ipod/i.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+    const android = /android/i.test(ua);
+    const inApp = /FBAN|FBAV|Instagram|Line\/|WhatsApp|Twitter|LinkedInApp|TikTok|musical_ly|GSA\//i.test(ua);
+    let browser = 'outro';
+    if (ios) browser = /CriOS/.test(ua) ? 'chrome' : /FxiOS/.test(ua) ? 'firefox' : /EdgiOS/.test(ua) ? 'edge' : /OPiOS|OPT\//.test(ua) ? 'opera' : inApp ? 'inapp' : /Safari/.test(ua) ? 'safari' : 'outro';
+    else browser = inApp ? 'inapp' : /SamsungBrowser/.test(ua) ? 'samsung' : /EdgA?\//.test(ua) ? 'edge' : /OPR\/|Opera/.test(ua) ? 'opera' : /Firefox\//.test(ua) ? 'firefox' : /Chrome\//.test(ua) ? 'chrome' : /Safari\//.test(ua) ? 'safari' : 'outro';
+    const os = ios ? (/ipad/i.test(ua) || /Macintosh/.test(ua) ? 'iPad' : 'iPhone') : android ? 'Android' : 'computador';
+    return { ios, android, os, browser };
+  }
+  const BROWSER_NAME = { safari: 'Safari', chrome: 'Chrome', firefox: 'Firefox', edge: 'Edge', samsung: 'Samsung Internet', opera: 'Opera', inapp: 'navegador de outro app', outro: 'navegador' };
+  const ICO_SHARE = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M6 11v9h12v-9"/></svg>';
+  const ICO_DOTS = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>';
+  const ICO_MENU = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>';
+  function installSteps(d) {
+    const done = '<b>Depois, abra o PacePro pelo ícone na tela de início</b> e continue por lá.';
+    if (d.browser === 'inapp') return [
+      `Você abriu o link dentro de outro app. Toque no menu ${ICO_DOTS} e escolha <b>Abrir no ${d.ios ? 'Safari' : 'Chrome'}</b> (ou no navegador).`,
+      'Lá, volte aqui: o passo a passo certo aparece sozinho.'];
+    if (d.ios) {
+      const ios = d.browser === 'safari' ? [
+        `Toque em <b>Compartilhar</b> ${ICO_SHARE} na barra do Safari (embaixo, ou no topo no iPad).`,
+        'Role a lista e toque em <b>Adicionar à Tela de Início</b>.',
+        'Toque em <b>Adicionar</b>, no canto de cima.']
+        : d.browser === 'chrome' ? [
+        `Toque em <b>Compartilhar</b> ${ICO_SHARE} ao lado do endereço, no topo.`,
+        'Toque em <b>Adicionar à Tela de Início</b> (se não aparecer, toque em "Mais").',
+        'Toque em <b>Adicionar</b>.']
+        : d.browser === 'firefox' ? [
+        `Toque no menu ${ICO_MENU} e depois em <b>Compartilhar</b>.`,
+        'Toque em <b>Adicionar à Tela de Início</b> e depois em <b>Adicionar</b>.']
+        : [
+        `Abra o menu do navegador e procure <b>Compartilhar</b> ${ICO_SHARE}.`,
+        'Toque em <b>Adicionar à Tela de Início</b> e depois em <b>Adicionar</b>.',
+        'Se não encontrar, abra este site no <b>Safari</b> e faça por lá.'];
+      return ios.concat([done + ' No iPhone, só o app instalado recebe notificações.']);
+    }
+    if (d.android) {
+      const a = d.browser === 'samsung' ? [
+        `Toque no menu ${ICO_MENU} na barra de baixo.`,
+        'Toque em <b>Adicionar página a</b> e depois em <b>Tela inicial</b>.']
+        : d.browser === 'firefox' ? [
+        `Toque no menu ${ICO_DOTS}.`,
+        'Toque em <b>Instalar</b> (ou <b>Adicionar à tela inicial</b>) e confirme.']
+        : d.browser === 'edge' ? [
+        'Toque no menu <b>···</b> na barra de baixo.',
+        'Toque em <b>Adicionar ao telefone</b> e confirme.']
+        : d.browser === 'opera' ? [
+        `Toque no menu ${ICO_DOTS}.`,
+        'Toque em <b>Tela inicial</b> (ou <b>Adicionar à tela inicial</b>) e confirme.']
+        : [
+        `Toque no menu ${ICO_DOTS}, no canto de cima.`,
+        'Toque em <b>Instalar app</b> (ou <b>Adicionar à tela inicial</b>) e depois em <b>Instalar</b>.'];
+      return a.concat([done]);
+    }
+    return d.browser === 'chrome' || d.browser === 'edge' ? [
+      'Clique no ícone de instalar na barra de endereço (um monitor com uma seta) e depois em <b>Instalar</b>.',
+      'No celular, abra este mesmo endereço para instalar por lá também.']
+      : d.browser === 'safari' ? [
+      'No menu <b>Arquivo</b>, escolha <b>Adicionar ao Dock</b>.',
+      'No celular, abra este mesmo endereço para instalar por lá também.']
+      : ['Este navegador não instala apps. Abra este endereço no celular (ou no Chrome) para instalar.'];
+  }
+  function renderInstallStep() {
+    const li = $('wInstall'); if (!li) return;
+    const standalone = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+    li.hidden = standalone;
+    // Numera só os passos visíveis.
+    const steps = [...li.parentElement.children].filter(x => !x.hidden);
+    steps.forEach((x, i) => { const n = x.querySelector('.n'); if (n) n.textContent = String(i + 1); });
+    $('wTitle').textContent = `Seu plano de corrida em ${steps.length} passos`;
+    if (standalone) return;
+    const d = deviceInfo();
+    $('wInstallWho').textContent = `Abre em tela cheia, funciona sem internet e recebe notificações. Detectamos: ${d.os} · ${BROWSER_NAME[d.browser]}.`;
+    // Android/Chrome com o pedido de instalação disponível: um botão resolve.
+    if (installEvt) {
+      $('wInstallHow').innerHTML = '';
+      $('wInstallAct').innerHTML = '<button class="btn" type="button" id="wInstallBtn">Instalar o app</button>';
+      $('wInstallBtn').onclick = async () => { const e = installEvt; if (!e) return; e.prompt(); try { await e.userChoice; } catch (err) {} installEvt = null; renderInstall(); renderWelcome(); };
+      return;
+    }
+    $('wInstallAct').innerHTML = '';
+    $('wInstallHow').innerHTML = installSteps(d).map(t => `<li>${t}</li>`).join('');
+  }
+  // Último passo: ligar as notificações (mesmo fluxo do botão de Ajustes).
+  function renderPushStep() {
+    const li = $('wPush'); if (!li) return;
+    const sup = pushSupported(), perm = sup ? Notification.permission : 'unsupported';
+    const on = sup && !!pushMeta().on && perm === 'granted';
+    li.classList.toggle('ok', on);
+    const txt = $('wPushTxt'), act = $('wPushAct');
+    const base = 'Treino do dia, contagem para a prova, retirada do kit e aviso quando um treino novo chegar do Strava.';
+    if (on) { txt.textContent = base; act.innerHTML = `<span class="chip good">${CHECK}Notificações ativadas</span>`; return; }
+    if (isIOS() && !isStandalone()) { txt.textContent = 'No iPhone, as notificações só funcionam no app instalado. Faça o passo 1, abra o PacePro pelo ícone na tela de início e ative aqui.'; act.innerHTML = ''; return; }
+    if (!sup) { txt.textContent = 'Este navegador não recebe notificações. Use o Chrome no Android ou o app instalado no iPhone.'; act.innerHTML = ''; return; }
+    if (push.configured === false) { txt.textContent = 'As notificações ainda não estão disponíveis neste site.'; act.innerHTML = ''; return; }
+    txt.textContent = perm === 'denied' ? 'As notificações estão bloqueadas para o PacePro. Libere nas configurações do navegador ou do celular e toque no botão de novo.' : base;
+    act.innerHTML = '<button class="btn" type="button" id="wPushBtn">Ativar notificações</button>';
+    const b = $('wPushBtn'); b.disabled = push.busy;
+    b.onclick = async () => { b.disabled = true; await $('pushOn').onclick(); renderWelcome(); };
+  }
   function renderWelcome() {
+    renderPushStep();
+    renderInstallStep();
     const w = $('wStrava'); if (!w) return;
     w.classList.toggle('ok', strava.connected);
     const a = w.querySelector('.row-actions');

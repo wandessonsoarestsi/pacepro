@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="theme-color" content="#0A0B0D">
 <title>PacePro</title>
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
@@ -45,12 +45,14 @@
     <section data-view="hoje" class="view">
       <div class="card noplan welcome" data-no-plan hidden>
         <span class="eyebrow">Bem-vindo ao PacePro</span>
-        <h3>Seu plano de corrida em 2 passos</h3>
+        <h3 id="wTitle">Seu plano de corrida em 2 passos</h3>
         <p class="muted">Tudo fica salvo neste celular. Se quiser, entre com o Google para guardar na nuvem e não perder nada.</p>
         <p class="small" id="wAcct" hidden>Já usa o PacePro em outro aparelho? <button class="linkbtn" type="button" data-google-login>Entrar com Google</button> para trazer seus dados.</p>
         <ol class="steps">
+          <li id="wInstall" hidden><span class="n">1</span><div><b>Instale o app na tela de início</b><small class="muted" id="wInstallWho"></small><ol class="howto" id="wInstallHow"></ol><div class="row-actions" id="wInstallAct"></div></div></li>
           <li id="wStrava"><span class="n">1</span><div><b>Conecte o Strava</b><small class="muted">Opcional. Seus treinos são analisados sozinhos e o app calcula seu nível atual.</small><div class="row-actions"><button class="strava-btn" type="button" data-strava-connect aria-label="Connect with Strava"><img src="/strava/connect-with-strava.svg" alt="Connect with Strava" width="193" height="48"></button></div></div></li>
-          <li><span class="n">2</span><div><b>Cadastre sua próxima prova</b><small class="muted">Data, distância e meta. O app monta o plano até o dia da prova.</small><div class="row-actions"><button class="btn" type="button" id="wRace">Cadastrar minha prova</button></div></div></li>
+          <li id="wRaceStep"><span class="n">2</span><div><b>Cadastre sua próxima prova</b><small class="muted">Data, distância e meta. O app monta o plano até o dia da prova.</small><div class="row-actions"><button class="btn" type="button" id="wRace">Cadastrar minha prova</button></div></div></li>
+          <li id="wPush"><span class="n">3</span><div><b>Ative as notificações</b><small class="muted" id="wPushTxt">Treino do dia, contagem para a prova, retirada do kit e aviso quando um treino novo chegar do Strava.</small><div class="row-actions" id="wPushAct"></div></div></li>
         </ol>
         <p class="small muted">Só quer ver como funciona? <button class="linkbtn" type="button" data-example>Abrir o plano de exemplo</button></p>
       </div>

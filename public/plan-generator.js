@@ -1,5 +1,6 @@
 /* Gerador de plano de corrida por algoritmo (método VDOT de Jack Daniels).
-   Entrada: { start, race (aaaa-mm-dd), distanceKm, goalSec, currentSec5k, runDays (3|4|5), swim, gym, level: 'normal'|'iniciante'|'pausa' }
+   Entrada: { start, race (aaaa-mm-dd), distanceKm, goalSec, currentSec5k, runDays (3|4|5), runWeekdays ([0..6], 0 = segunda), cross, gym, level: 'normal'|'iniciante'|'pausa' }
+   runWeekdays, quando vem, define os dias de corrida (de 2 a 6) e vale mais que runDays.
    Saída: Markdown no formato lido por plan-parser.js. */
 (function (root) {
   const pad = n => String(n).padStart(2, '0');
@@ -97,6 +98,36 @@ O número de séries e repetições de cada semana está na linha em itálico ab
 | Equilíbrio em uma perna | 2 × 30 s por perna |
 `;
 
+  /* --- Dias da semana escolhidos --- */
+  // Recebe os dias de corrida (0 = segunda ... 6 = domingo) e decide onde fica cada treino:
+  // longo (L) no fim de semana se der, intervalado (I) e limiar (T) longe do longo e um do outro,
+  // o resto vira leve (E com strides e X). Outras atividades vão nos dias livres, deixando ao menos um de descanso.
+  function layoutFor(days) {
+    const L = days.includes(6) ? 6 : days.includes(5) ? 5 : days[days.length - 1];
+    const rest = days.filter(d => d !== L);
+    const gap = (a, b) => { const x = Math.abs(a - b); return Math.min(x, 7 - x); };
+    let best = null;
+    const hardN = days.length >= 3 ? 2 : 1;
+    const pairs = [];
+    rest.forEach(i => { if (hardN === 1) pairs.push([i, null]); else rest.forEach(t => { if (t !== i) pairs.push([i, t]); }); });
+    pairs.forEach(([i, t]) => {
+      const hard = [i, t, L].filter(d => d != null);
+      let score = 0;
+      for (let a = 0; a < hard.length; a++) for (let b = a + 1; b < hard.length; b++) { const g = gap(hard[a], hard[b]); score += g === 1 ? 100 : g === 2 ? 10 : 0; }
+      if (t != null && t < i) score += 1; // intervalado antes do limiar na semana
+      score += i * 0.01;
+      if (!best || score < best.score) best = { i, t, score };
+    });
+    const easy = rest.filter(d => d !== best.i && d !== best.t);
+    // E (com strides) no dia leve mais longe do longo; os outros leves viram X
+    const E = easy.length ? easy.slice().sort((a, b) => gap(b, L) - gap(a, L) || a - b)[0] : null;
+    const free = [0, 1, 2, 3, 4, 5, 6].filter(d => !days.includes(d));
+    const nCross = Math.max(0, Math.min(2, free.length - 1));
+    // outras atividades: de preferência dias de semana e não na véspera do longo
+    const swim = free.slice().sort((a, b) => ((a === L - 1 ? 10 : 0) + (a > 4 ? 5 : 0)) - ((b === L - 1 ? 10 : 0) + (b > 4 ? 5 : 0)) || a - b).slice(0, nCross);
+    return { I: best.i, T: best.t, E, X: easy.filter(d => d !== E), L, swim };
+  }
+
   /* --- Gerador --- */
   function generate(o) {
     const meters = o.distanceKm * 1000;
@@ -104,7 +135,9 @@ O número de séries e repetições de cada semana está na linha em itálico ab
     const curSec5 = o.currentSec5k || o.goalSec * (5 / o.distanceKm) * 1.18;
     let curV = vdotFrom(5000, curSec5);
     if (o.level === 'pausa') curV *= 0.97;
-    const runDays = Math.min(5, Math.max(3, o.runDays || 4));
+    const chosen = [...new Set((o.runWeekdays || []).map(Number).filter(d => d >= 0 && d <= 6))].sort((a, b) => a - b);
+    const custom = chosen.length >= 2 && chosen.length <= 6;
+    const runDays = custom ? chosen.length : Math.min(5, Math.max(3, o.runDays || 4));
     const beginner = o.level === 'iniciante', returning = o.level === 'pausa';
 
     // semanas de segunda a domingo; a primeira pode começar no meio
@@ -133,9 +166,10 @@ O número de séries e repetições de cada semana está na linha em itálico ab
     const scale = w => (returning && w === 1 ? 0.75 : deload(w) ? 0.8 : 1);
 
     // dias da semana por número de corridas (0 = segunda ... 6 = domingo)
-    const layout = runDays === 3 ? { I: 1, T: 3, E: null, X: null, L: 6, swim: [0, 4] }
-      : runDays === 4 ? { I: 0, T: 2, E: 4, X: null, L: 6, swim: [1, 3] }
-      : { I: 0, T: 2, E: 4, X: 1, L: 6, swim: [3] };
+    const layout = custom ? layoutFor(chosen)
+      : runDays === 3 ? { I: 1, T: 3, E: null, X: [], L: 6, swim: [0, 4] }
+      : runDays === 4 ? { I: 0, T: 2, E: 4, X: [], L: 6, swim: [1, 3] }
+      : { I: 0, T: 2, E: 4, X: [1], L: 6, swim: [3] };
 
     // Outras atividades escolhidas (natação, bike, mobilidade ou outra que a pessoa escrever).
     const CROSS = CROSS_TEXT;
@@ -181,7 +215,7 @@ O número de séries e repetições de cada semana está na linha em itálico ab
       const easyMin = Math.round(Math.min(40, easy0 + (w - 1) * 2) * sc / 5) * 5;
       const longMin = Math.round(Math.min(longCap, long0 + (w - 1) * 5) * sc / 5) * 5;
       const kinds = {};
-      kinds[layout.I] = 'I'; kinds[layout.T] = 'T'; if (layout.E != null) kinds[layout.E] = 'E'; if (layout.X != null) kinds[layout.X] = 'X'; kinds[layout.L] = 'L';
+      kinds[layout.I] = 'I'; if (layout.T != null) kinds[layout.T] = 'T'; if (layout.E != null) kinds[layout.E] = 'E'; layout.X.forEach(d => { kinds[d] = 'X'; }); kinds[layout.L] = 'L';
       // Outras atividades nos dias sem corrida, revezando quando houver mais atividades que dias.
       const free = layout.swim.filter(d => !kinds[d]);
       const crossOf = {};
@@ -263,7 +297,7 @@ ${rows.join('\n')}`);
 - **Forma atual:** VDOT ${curV.toFixed(1).replace('.', ',')}, que prevê ${fmtTime(predicted)} nos ${km(o.distanceKm)} km.
 - **Meta:** VDOT ${goalV.toFixed(1).replace('.', ',')} (${fmtPace(goalPace)}/km).
 - ${realism}
-- **Estrutura:** ${runDays} corridas por semana${cross.length ? ', ' + cross.map(c => c.label.toLowerCase()).join(', ') + ' nos dias sem corrida' : ''}${o.gym ? ', musculação de segunda a sexta' : ''}. Cerca de 80% do volume é leve (FC até ~145). Ritmos dos treinos fortes sobem até 0,8 VDOT por semana em direção à meta.
+- **Estrutura:** ${runDays} corridas por semana${custom ? ' (' + chosen.map(d => WDL[(d + 1) % 7]).join(', ') + ')' : ''}${cross.length ? ', ' + cross.map(c => c.label.toLowerCase()).join(', ') + ' nos dias sem corrida' : ''}${o.gym ? ', musculação de segunda a sexta' : ''}. Cerca de 80% do volume é leve (FC até ~145). Ritmos dos treinos fortes sobem até 0,8 VDOT por semana em direção à meta.
 ${testWeek ? `- **Teste:** no domingo da semana ${testWeek}. Se o resultado vier diferente do previsto, gere o plano de novo a partir dele.\n` : ''}
 | Ritmo | Hoje | Na meta |
 |---|---|---|
@@ -281,6 +315,6 @@ ${weeks.join('\n\n')}
 ${o.gym ? GYM_MD : ''}`;
   }
 
-  const api = { generate, vdotFrom, raceTime, paces, GYM_MD, CROSS_TEXT };
+  const api = { generate, layoutFor, vdotFrom, raceTime, paces, GYM_MD, CROSS_TEXT };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.PlanGenerator = api;
 })(typeof window !== 'undefined' ? window : globalThis);

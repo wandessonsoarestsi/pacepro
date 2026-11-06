@@ -202,9 +202,20 @@
             <label for="gDist">Distância
               <select id="gDist"><option value="5">5 km</option><option value="10">10 km</option><option value="21.1">21,1 km</option><option value="42.2">42,2 km</option></select></label>
             <label for="gGoal">Tempo-objetivo<input id="gGoal" type="text" inputmode="numeric" placeholder="30:00" required></label>
-            <label for="gDays">Corridas por semana
-              <select id="gDays"><option>3</option><option selected>4</option><option>5</option></select></label>
-            <label for="gLevel">Momento atual
+            <fieldset class="full xtra" id="gDaysBox">
+              <legend>Dias de corrida</legend>
+              <div class="daypick" id="gDays">
+                <label><input type="checkbox" data-wd="0" checked><span>Seg</span></label>
+                <label><input type="checkbox" data-wd="1"><span>Ter</span></label>
+                <label><input type="checkbox" data-wd="2" checked><span>Qua</span></label>
+                <label><input type="checkbox" data-wd="3"><span>Qui</span></label>
+                <label><input type="checkbox" data-wd="4" checked><span>Sex</span></label>
+                <label><input type="checkbox" data-wd="5"><span>Sáb</span></label>
+                <label><input type="checkbox" data-wd="6" checked><span>Dom</span></label>
+              </div>
+              <small class="muted" id="gDaysHint">4 corridas por semana. O longão fica no fim de semana quando der.</small>
+            </fieldset>
+            <label for="gLevel" class="full">Momento atual
               <select id="gLevel"><option value="normal">Treinando normalmente</option><option value="pausa">Voltando de uma pausa</option><option value="iniciante">Começando agora</option></select></label>
             <fieldset class="full xtra">
               <legend>Além da corrida (opcional)</legend>
@@ -222,7 +233,8 @@
           </form>
           <p class="msg" id="genMsg" hidden></p>
           <div class="row-actions" id="genActions" hidden>
-            <button class="btn" id="gUse" type="button">Usar este plano</button>
+            <button class="btn" id="gSee" type="button">Ver o plano</button>
+            <button class="btn ghost" id="gUndo" type="button">Voltar ao plano anterior</button>
             <a class="btn ghost" id="gDownload" download="plano.md" href="#">Baixar .md</a>
           </div>
         </div>

@@ -1606,7 +1606,7 @@
   // Os avisos saem do servidor, mesmo com o app fechado. Para isso o aparelho manda os próximos dias do plano
   // (data, título e tipo), a próxima prova e os dias marcados como feitos. Nada do Strava vai junto.
   // pp.push (só neste aparelho) = { on, prefs, key: chave do servidor usada na inscrição, sent: último envio, at }
-  const PUSH_DEF = { treino: true, prova: true, perdido: true, strava: true };
+  const PUSH_DEF = { treino: true, prova: true, kit: true, perdido: true, strava: true };
   let push = { key: null, configured: null, busy: false };
   const pushMeta = () => store.get('pp.push', {}) || {};
   const pushPrefs = () => ({ ...PUSH_DEF, ...(pushMeta().prefs || {}) });
@@ -1626,7 +1626,8 @@
     const r = allRaces().find(x => x.date >= today);
     const race = r ? { d: r.date, n: r.id === 'plan' ? '' : r.name } : null;
     const doneDays = Object.keys(done).filter(k => k[0] !== '_' && done[k] && k >= addDays(today, -3)).sort();
-    return { sub: sub.toJSON(), prefs: pushPrefs(), days, race, done: doneDays };
+    const kits = (extra.races || []).filter(x => x.kitDate && x.kitDate >= today).map(x => ({ d: x.kitDate, n: x.name, p: x.kitPlace || '' }));
+    return { sub: sub.toJSON(), prefs: pushPrefs(), days, race, done: doneDays, kits };
   }
   // Inscreve este aparelho (se preciso) e manda os dados dos lembretes. force: manda mesmo sem mudança.
   async function pushSync(force) {
@@ -2299,7 +2300,8 @@
     const sub = [kmTxt(r.dist), r.goal ? `meta ${r.goal}` : '', r.place].filter(Boolean).map(esc).join(' · ');
     const chip = res ? `<span class="chip ${r.goal && toSec(r.goal) && res <= toSec(r.goal) ? 'good' : ''}">${A.fmtTime(res)}</span>` : past ? '<span class="chip">sem resultado</span>' : `<span class="chip ${r.plan ? 'key' : r.status === 'inscrito' ? 'good' : ''}">${r.plan ? 'no plano' : r.status === 'inscrito' ? 'inscrito' : 'pretendo'}</span>`;
     const open = raceOpen === r.id;
-    return `<div class="rrow${past ? ' past' : ''}"><button class="rr-main" type="button" data-rid="${esc(r.id)}" aria-expanded="${open}"><span class="dtile"><b>${dd.getDate()}</b><small>${WD[dd.getDay()]}</small></span><span class="rr-txt"><span class="t">${esc(r.name)}</span><span class="s">${sub}</span>${when ? `<span class="s when">${when}</span>` : ''}</span><span class="rr-end">${chip}<span class="chev" aria-hidden="true">${open ? '▴' : '▾'}</span></span></button>` +
+    const kit = r.kitDate && !past ? `<span class="s kit">Kit: ${r.kitDate === today ? 'hoje' : `${WD[D(r.kitDate).getDay()]} ${ddmm(r.kitDate)}`}${r.kitPlace ? ' · ' + esc(r.kitPlace) : ''}</span>` : '';
+    return `<div class="rrow${past ? ' past' : ''}"><button class="rr-main" type="button" data-rid="${esc(r.id)}" aria-expanded="${open}"><span class="dtile"><b>${dd.getDate()}</b><small>${WD[dd.getDay()]}</small></span><span class="rr-txt"><span class="t">${esc(r.name)}</span><span class="s">${sub}</span>${when ? `<span class="s when">${when}</span>` : ''}${kit}</span><span class="rr-end">${chip}<span class="chev" aria-hidden="true">${open ? '▴' : '▾'}</span></span></button>` +
       (open ? `<div class="rr-act">${!past && !r.plan ? `<button class="btn sm" type="button" data-rplan="${esc(r.id)}">Montar plano para esta prova</button>` : ''}${!past ? `<button class="btn ghost sm" type="button" data-rics="${esc(r.id)}">Adicionar à agenda</button>` : ''}<button class="btn ghost sm" type="button" data-redit="${esc(r.id)}">Editar</button><button class="btn ghost sm danger" type="button" data-rdel="${esc(r.id)}">${r.id === 'plan' ? 'Tirar do calendário' : 'Excluir'}</button></div>` : '') + `</div>`;
   }
   function renderRaces() {
@@ -2334,6 +2336,10 @@
       `<label for="rfGoal">Meta (opcional)<input id="rfGoal" type="text" inputmode="numeric" value="${esc(r.goal)}" placeholder="ex.: 55:00"></label>` +
       `<label for="rfStatus">Situação<select id="rfStatus"><option value="inscrito"${r.status === 'inscrito' ? ' selected' : ''}>Inscrito</option><option value="pretendo"${r.status !== 'inscrito' ? ' selected' : ''}>Pretendo correr</option></select></label>` +
       `<label for="rfPlace" class="full">Local (opcional)<input id="rfPlace" type="text" value="${esc(r.place || '')}" placeholder="ex.: Beira Mar, Fortaleza"></label>` +
+      `<fieldset class="full xtra"><legend>Retirada do kit (opcional)</legend><div class="form kitf">` +
+      `<label for="rfKitDate">Dia<input id="rfKitDate" type="date" value="${esc(r.kitDate || '')}"></label>` +
+      `<label for="rfKitPlace">Local<input id="rfKitPlace" type="text" value="${esc(r.kitPlace || '')}" placeholder="ex.: Shopping Iguatemi"></label>` +
+      `</div><small class="muted">No dia, o app manda uma notificação para lembrar de pegar o kit.</small></fieldset>` +
       `<div class="row-actions full"><button class="btn" type="submit">Salvar</button><button class="btn ghost" id="rfCancel" type="button">Cancelar</button></div></form><p class="msg" id="rfMsg" hidden></p>`;
     box.scrollIntoView({ block: 'start', behavior: 'smooth' });
     $('rfCancel').onclick = () => renderRaceForm(false);
@@ -2345,12 +2351,15 @@
       if (!date) return bad('Escolha a data da prova.');
       if (!(dist > 0 && dist <= 100)) return bad('Escreva a distância em km, como 5, 10 ou 21,1.');
       if (goal && !toSec(goal)) return bad('Escreva a meta como 55:00 ou 1:59:00.');
-      const item = { id: raceEdit && raceEdit !== 'plan' ? raceEdit : 'r' + Date.now().toString(36), name, date, dist, goal, place: $('rfPlace').value.trim(), status: $('rfStatus').value };
+      const kitDate = $('rfKitDate').value, kitPlace = $('rfKitPlace').value.trim();
+      if (kitDate && kitDate > date) return bad('O dia da retirada do kit precisa ser antes da prova (ou no mesmo dia).');
+      if (kitPlace && !kitDate) return bad('Escolha o dia da retirada do kit.');
+      const item = { id: raceEdit && raceEdit !== 'plan' ? raceEdit : 'r' + Date.now().toString(36), name, date, dist, goal, place: $('rfPlace').value.trim(), status: $('rfStatus').value, kitDate: kitDate || '', kitPlace: kitDate ? kitPlace : '' };
       if (raceEdit === 'plan' && plan && date !== plan.race) extra.hidePlanRace = plan.race;
       extra.races = (extra.races || []).filter(x => x.id !== item.id).concat(item);
       raceEdit = null; raceOpen = item.id; persist(); renderRaceForm(false); renderAll();
       if (!plan) { prefillGen(item.dist, item.goal, item.date); showToast(item.goal ? 'Prova salva. Confira os dados e toque em "Gerar plano".' : 'Prova salva. Agora escreva a sua meta para gerar o plano.'); if (!item.goal) setTimeout(() => $('gGoal').focus(), 300); }
-      else showToast('Prova salva.');
+      else showToast(kitDate && !pushMeta().on ? 'Prova salva. Ative as notificações em Ajustes para receber o lembrete do kit.' : 'Prova salva.');
     };
   }
 

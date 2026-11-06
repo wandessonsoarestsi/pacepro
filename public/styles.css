@@ -752,3 +752,5 @@ input,select,textarea{font-size:16px!important}
 
 /* Notificações */
 .push-opts{flex-direction:column;gap:2px;margin:4px 0 12px}
+.kitf{margin-top:4px}
+.rr-txt .s.kit{color:var(--fg2)}

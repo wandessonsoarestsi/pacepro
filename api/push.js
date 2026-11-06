@@ -6,7 +6,7 @@ const { dbConf, readCookie, open, baseUrl, fail, db } = require('./_lib');
 const P = require('./_push');
 const cron = require('./_cron');
 
-const PREFS = ['treino', 'prova', 'perdido', 'strava'];
+const PREFS = ['treino', 'prova', 'kit', 'perdido', 'strava'];
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const txt = (s, n) => String(s == null ? '' : s).replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, n);
 
@@ -18,7 +18,8 @@ function clean(b) {
     .map(d => ({ d: d.d, t: txt(d.t, 80), x: txt(d.x, 160), ty: txt(d.ty, 16), k: !!d.k }));
   const race = b.race && DATE.test(b.race.d) ? { d: b.race.d, n: txt(b.race.n, 60) } : null;
   const done = (Array.isArray(b.done) ? b.done : []).filter(d => DATE.test(d)).slice(-10);
-  return { sub: { endpoint: String(s.endpoint), keys: { p256dh: String(s.keys.p256dh), auth: String(s.keys.auth) } }, prefs, days, race, done };
+  const kits = (Array.isArray(b.kits) ? b.kits : []).slice(0, 10).filter(k => k && DATE.test(k.d)).map(k => ({ d: k.d, n: txt(k.n, 60), p: txt(k.p, 100) }));
+  return { sub: { endpoint: String(s.endpoint), keys: { p256dh: String(s.keys.p256dh), auth: String(s.keys.auth) } }, prefs, days, race, done, kits };
 }
 // Atleta do Strava conectado neste navegador (do cookie criptografado), para o aviso de atividade nova.
 function athleteOf(req) {

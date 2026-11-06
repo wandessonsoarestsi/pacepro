@@ -992,20 +992,37 @@
     };
     document.querySelectorAll('#gDays [data-wd]').forEach(b => b.onchange = () => { store.set('pacepro.genDays', genDays()); dayHint(); });
     dayHint();
+    // Retorno visual: o botão mostra "Gerando…" e depois a mensagem (erro ou sucesso) é trazida para a tela.
+    const btn = $('gBtn'), btnTxt = btn.textContent;
+    let btnTimer = null;
+    const showMsg = () => { const m = $('genMsg'); m.classList.remove('flash'); void m.offsetWidth; m.classList.add('flash'); setTimeout(() => m.scrollIntoView({ block: 'center', behavior: 'smooth' }), 30); };
+    const btnState = (st) => {
+      clearTimeout(btnTimer);
+      btn.disabled = st === 'busy'; btn.classList.toggle('busy', st === 'busy');
+      btn.innerHTML = st === 'busy' ? '<span class="btn-spin" aria-hidden="true"></span>Gerando plano…' : st === 'ok' ? '✓ Plano gerado' : esc(btnTxt);
+      if (st === 'ok') btnTimer = setTimeout(() => btnState(''), 2500);
+    };
     f.onsubmit = e => {
       e.preventDefault();
+      if (btn.disabled) return;
+      btnState('busy');
+      // pequena pausa para o "Gerando…" aparecer; montar o plano é quase instantâneo
+      setTimeout(() => { const ok = genSubmit(); btnState(ok ? 'ok' : ''); showMsg(); }, 450);
+    };
+    const genSubmit = () => {
+      const fail = t => { msg.className = 'msg bad'; msg.textContent = t; return false; };
       const msg = $('genMsg'); msg.hidden = false; $('genActions').hidden = true;
       let goalSec = toSec($('gGoal').value); const race = $('gRace').value, start = $('gStart').value;
       // "2:27" numa meia maratona é 2h27, não 2 min 27 s: se o ritmo ficar impossível (abaixo de 2'30"/km), lê como horas e minutos.
       if (goalSec && goalSec / +$('gDist').value < 150 && $('gGoal').value.trim().split(/[:.,h]/).length === 2) goalSec *= 60;
-      if (!race || !start) { msg.className = 'msg bad'; msg.textContent = 'Preencha a data da prova e o início do plano.'; return; }
-      if (race <= start) { msg.className = 'msg bad'; msg.textContent = 'A prova precisa ser depois do início do plano.'; return; }
-      if ((D(race) - D(start)) / 864e5 > 168) { msg.className = 'msg bad'; msg.textContent = 'Escolha um período de até 24 semanas.'; return; }
-      if (!goalSec) { msg.className = 'msg bad'; msg.textContent = 'Escreva o tempo-objetivo como 30:00 ou 1:55:00.'; return; }
+      if (!race || !start) return fail('Preencha a data da prova e o início do plano.');
+      if (race <= start) return fail('A prova precisa ser depois do início do plano.');
+      if ((D(race) - D(start)) / 864e5 > 168) return fail('Escolha um período de até 24 semanas.');
+      if (!goalSec) return fail('Escreva o tempo-objetivo como 30:00 ou 1:55:00.');
       const wd = genDays();
-      if (wd.length < 2 || wd.length > 6) { msg.className = 'msg bad'; msg.textContent = 'Escolha de 2 a 6 dias de corrida na semana.'; return; }
+      if (wd.length < 2 || wd.length > 6) return fail('Escolha de 2 a 6 dias de corrida na semana.');
       let cur = toSec($('gCur').value);
-      if ($('gCur').value.trim() && !cur) { msg.className = 'msg bad'; msg.textContent = 'Escreva o tempo atual nos 5 km como 42:30.'; return; }
+      if ($('gCur').value.trim() && !cur) return fail('Escreva o tempo atual nos 5 km como 42:30.');
       if (!cur) { const est = estimateAt(today); cur = est ? est.sec * (5 / distKm()) : null; }
       try {
         const md = window.PlanGenerator.generate({ start, race, distanceKm: +$('gDist').value, goalSec, currentSec5k: cur, runWeekdays: genDays(), cross: [...document.querySelectorAll('[data-cross]:checked')].map(b => b.dataset.cross).concat($('gOther').value.trim() ? [{ name: $('gOther').value.trim() }] : []), gym: $('gGym').checked, level: $('gLevel').value });
@@ -1024,7 +1041,8 @@
         $('gUndo').hidden = !prevPlan.md;
         $('genActions').hidden = false;
         showToast('Plano novo em uso.');
-      } catch (err) { msg.className = 'msg bad'; msg.textContent = err.message; }
+        return true;
+      } catch (err) { return fail(err.message || 'Não consegui montar o plano com esses dados.'); }
     };
     $('gSee').onclick = () => { genOpen = false; $('genMsg').hidden = true; $('genActions').hidden = true; location.hash = 'plano'; };
     $('gUndo').onclick = () => {

@@ -2,6 +2,13 @@
 (function () {
   const A = window.Analysis, P = window.PlanParser;
   const $ = id => document.getElementById(id);
+  // Cor da barra do celular acompanha o fundo do tema escolhido.
+  function syncThemeColor() {
+    const m = document.querySelector('meta[name="theme-color"]'); if (!m) return;
+    const c = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim(); if (c) m.setAttribute('content', c);
+  }
+  syncThemeColor();
+  try { matchMedia('(prefers-color-scheme: light)').addEventListener('change', syncThemeColor); } catch (e) {}
   const pad = n => String(n).padStart(2, '0');
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const store = {
@@ -419,6 +426,7 @@
   }
   function renderAcct() {
     renderMe();
+    try { renderHeader(); } catch (e) {} // saudação com o nome no topo
     const chip = $('acctChip'); if (!chip) return;
     const u = acct.user, m = syncMeta();
     const w = $('wAcct'); if (w) w.hidden = !!u || acct.configured !== true;
@@ -544,7 +552,8 @@
     const d = D(selected);
     let title = VIEW_TITLE[view], sub = '';
     if (view === 'hoje' && plan) {
-      title = selected === today ? 'Início' : selected === addDays(today, 1) ? 'Amanhã' : selected === addDays(today, -1) ? 'Ontem' : WDL[d.getDay()];
+      const first = acct.user ? String(acct.user.name || '').trim().split(/\s+/)[0] : '';
+      title = selected === today ? (first ? `Olá, ${first} 👋` : 'Olá! 👋') : selected === addDays(today, 1) ? 'Amanhã' : selected === addDays(today, -1) ? 'Ontem' : WDL[d.getDay()];
       const day = dayAt(selected);
       sub = `${WDL[d.getDay()]}, ${d.getDate()} de ${MON[d.getMonth()]}${day && day.week ? ` · semana ${day.week} de ${plan.weeks.length}` : day && day.recovery ? ` · recuperação, dia ${day.recovery} de 7` : ''}`;
     } else if (view === 'plano' && plan) sub = `${planSource === 'exemplo' ? 'Plano de exemplo · ' : ''}Para ${planRaceLabel()} em ${ddmm(raceISO())} · ${plan.weeks.length} semanas`;
@@ -1175,8 +1184,8 @@
     if (!plan) $('planDelAsk').hidden = true;
     $('genBox').hidden = !genOpen;
     $('genToggle').setAttribute('aria-expanded', String(genOpen));
-    let t = 'system'; try { t = localStorage.getItem('sub30.theme') || 'system'; } catch (e) {}
-    if (t !== 'light' && t !== 'dark') t = 'system';
+    let t = 'dark'; try { t = localStorage.getItem('sub30.theme') || 'dark'; } catch (e) {}
+    if (t !== 'light' && t !== 'system') t = 'dark';
     document.querySelectorAll('#themePills button').forEach(b => b.setAttribute('aria-checked', String(b.dataset.t === t)));
   }
   let genOpen = false;
@@ -1189,7 +1198,8 @@
   document.querySelectorAll('#themePills button').forEach(b => b.onclick = () => {
     const t = b.dataset.t; // gravado como texto puro: é assim que o index.html lê ao abrir
     try { localStorage.setItem('sub30.theme', t); } catch (e) {}
-    if (t === 'system') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme', t);
+    if (t === 'dark') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme', t);
+    syncThemeColor();
     renderSettings();
   });
   $('stravaSync').onclick = async () => { $('stravaSync').disabled = true; await syncAndAnalyze(false, true); $('stravaSync').disabled = false; renderAll(); };
@@ -1850,7 +1860,7 @@
     try { await document.fonts.load('800 40px Geist'); } catch (e) {}
     const cv = document.createElement('canvas'); cv.width = 1080; cv.height = 1350;
     const ctx = cv.getContext('2d'), F = (w, s) => `${w} ${s}px Geist, -apple-system, sans-serif`;
-    const g = ctx.createLinearGradient(0, 0, 0, 1350); g.addColorStop(0, '#0B3B37'); g.addColorStop(1, '#0E1013');
+    const g = ctx.createLinearGradient(0, 0, 0, 1350); g.addColorStop(0, '#1F2A06'); g.addColorStop(1, '#0A0B0D');
     ctx.fillStyle = g; ctx.fillRect(0, 0, 1080, 1350);
     const ic = await loadIcon(); if (ic) ctx.drawImage(ic, 72, 72, 96, 96);
     ctx.fillStyle = '#fff'; ctx.font = F(800, 44); ctx.fillText('PacePro', 188, 136);
@@ -1870,7 +1880,7 @@
     track('compartilhar-treino');
     const a = st.analysis, m = a.metrics;
     const blob = await makeCard((ctx, F) => {
-      ctx.fillStyle = '#2CC0B3'; ctx.font = F(700, 30); ctx.fillText(`${WDL[D(day.date).getDay()].toUpperCase()}, ${ddmm(day.date)} · ${TYPE_LABEL[day.type].toUpperCase()}`, 72, 290);
+      ctx.fillStyle = '#C6F135'; ctx.font = F(700, 30); ctx.fillText(`${WDL[D(day.date).getDay()].toUpperCase()}, ${ddmm(day.date)} · ${TYPE_LABEL[day.type].toUpperCase()}`, 72, 290);
       ctx.fillStyle = '#fff'; ctx.font = F(800, 64);
       const words = day.title.split(' '); let line = '', y = 370;
       words.forEach(w => { if (ctx.measureText(line + w).width > 930) { ctx.fillText(line.trim(), 72, y); y += 76; line = ''; } line += w + ' '; }); ctx.fillText(line.trim(), 72, y);
@@ -1897,7 +1907,7 @@
     const est = estimateAt(today), proj = est ? A.project(est.sec, today, raceISO()) : null;
     const days = Math.max(0, Math.ceil((D(raceISO()) - D(today)) / 864e5));
     const blob = await makeCard((ctx, F) => {
-      ctx.fillStyle = '#2CC0B3'; ctx.font = F(700, 30); ctx.fillText(`MINHA EVOLUÇÃO · ${ddmm(today)}`, 72, 290);
+      ctx.fillStyle = '#C6F135'; ctx.font = F(700, 30); ctx.fillText(`MINHA EVOLUÇÃO · ${ddmm(today)}`, 72, 290);
       ctx.fillStyle = '#fff'; ctx.font = F(800, 200); ctx.fillText(proj ? A.fmtTime(proj) : '–', 64, 520);
       ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.font = F(600, 36); ctx.fillText(`projeção para os ${String(distKm()).replace('.', ',')} km`, 72, 580);
       const items = [['Hoje', est ? A.fmtTime(est.sec) : '–'], ['Meta', A.fmtTime(goalSec())], ['Faltam', `${days} dias`]];

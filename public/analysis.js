@@ -51,7 +51,7 @@
         if (diff < -15) { add(`Bloco principal a ${fmtPace(wp)}/km, ${Math.round(-diff)} s mais rápido que o alvo de ${fmtPace(target)}. Rápido demais para um limiar.`, 'warn'); worse('warn'); }
         else if (diff <= 6) add(`Bloco principal a ${fmtPace(wp)}/km, no alvo de ${fmtPace(target)}.`, 'good');
         else if (diff <= 15) { add(`Bloco principal a ${fmtPace(wp)}/km, ${Math.round(diff)} s acima do alvo de ${fmtPace(target)}.`, 'warn'); worse('warn'); }
-        else { add(`Bloco principal a ${fmtPace(wp)}/km, bem acima do alvo de ${fmtPace(target)}. Pela regra do degrau, repita este ritmo na próxima semana.`, 'bad'); worse('bad'); }
+        else { add(`Bloco principal a ${fmtPace(wp)}/km, bem acima do alvo de ${fmtPace(target)}. Na próxima semana, faça o mesmo treino num ritmo um pouco mais lento (ajuste de 5 a 10 s/km) e só aperte depois de repetir o alvo.`, 'bad'); worse('bad'); }
       }
       if (wh) add(wh > 167 ? `FC no bloco ${wh}: acima da faixa de limiar (150–165).` : wh < 148 ? `FC no bloco ${wh}: abaixo da faixa de limiar, dava para apertar.` : `FC no bloco ${wh}, dentro da faixa de limiar.`, wh > 167 ? 'warn' : 'good');
       const workMin = work.reduce((s, w) => s + (w.time || 0), 0) / 60;
@@ -90,7 +90,7 @@
             const diff = gp - tgt;
             if (diff <= 5) { txt += `, no alvo de ${fmtPace(tgt)}.`; tone = 'good'; }
             else if (diff <= 12) { txt += `, ${Math.round(diff)} s/km acima do alvo de ${fmtPace(tgt)}.`; tone = 'warn'; worse('warn'); }
-            else { txt += `, ${Math.round(diff)} s/km acima do alvo de ${fmtPace(tgt)}. Repita este degrau.`; tone = 'bad'; worse('bad'); }
+            else { txt += `, ${Math.round(diff)} s/km acima do alvo de ${fmtPace(tgt)}. Na próxima vez, faça o mesmo treino num ritmo um pouco mais lento (5 a 10 s/km) e só aperte depois de repetir o alvo.`; tone = 'bad'; worse('bad'); }
           } else txt += '.';
           if (plan && g.items.length < plan.n) { tone = tone === 'bad' ? 'bad' : 'warn'; worse('warn'); }
           add(txt, tone);

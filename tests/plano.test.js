@@ -77,4 +77,31 @@ t('não cabe tudo: corta primeiro as complementares', () => {
   assert.strictEqual(r.counts.run, 3); assert.ok(r.dropped.length);
 });
 
+
+const A = require('../public/analysis.js');
+const act = (km, sec, hr, laps) => ({ distance: km * 1000, moving_time: sec, average_heartrate: hr, splits_metric: Array.from({ length: Math.floor(km) }, () => ({ distance: 1000, moving_time: sec / km, average_heartrate: hr })), laps: laps || [] });
+
+t('análise escrita: leve bem feito parabeniza e diz que o plano segue', () => {
+  const a = A.analyze(act(5, 2100, 138), { type: 'easy', rua: "35' L", title: 'Leve' }, {});
+  const r = A.report({ a, day: { title: 'Leve' }, runs28: { n: 10, km: 50 }, auto: [], next: { title: 'Limiar', when: 'qua, 11/11' } });
+  const txt = r.parts.map(p => p.h + ' ' + p.p).join(' ');
+  assert.ok(/Sim, o treino leve/.test(txt)); assert.ok(/Parabéns/.test(txt)); assert.ok(/Nada muda/.test(txt)); assert.ok(/Limiar \(qua, 11\/11\)/.test(txt));
+});
+
+t('análise escrita: limiar abaixo explica o porquê (pausa, sono, peso) e incentiva', () => {
+  const a = A.analyze(act(6, 6 * 420, 170), { type: 'threshold', targetPace: 380, title: 'Limiar' }, {});
+  assert.strictEqual(a.status, 'bad');
+  const r = A.report({ a, day: { title: 'Limiar', targetPace: 380 }, feel: { rpe: 9, pain: 'nenhuma', sleep: 5 }, gapDays: 15, weight: { diff: 2, since: '01/10' }, runs28: { n: 1, km: 5 }, auto: ['O app sugere trocar.'], tip: 'Mire o mesmo alvo.' });
+  const txt = r.parts.map(p => p.h + ' ' + p.p).join(' ');
+  assert.ok(/Não, o treino de limiar/.test(txt)); assert.ok(/15 dias sem correr/.test(txt)); assert.ok(/dormiu 5h/i.test(txt));
+  assert.ok(/peso subiu 2,0 kg/.test(txt)); assert.ok(/O app sugere trocar/.test(txt)); assert.ok(/pausa/.test(r.parts[r.parts.length - 1].p));
+  assert.ok(!/Parabéns/.test(r.parts[r.parts.length - 1].h));
+});
+
+t('análise escrita: sem dados de contexto pede o registro de "Como foi"', () => {
+  const a = A.analyze(act(5, 2100, 160), { type: 'easy', rua: "35' L" }, {});
+  const r = A.report({ a, day: {} });
+  assert.ok(r.parts.some(p => /Como foi/.test(p.p)));
+});
+
 console.log(`${n} testes passaram`);

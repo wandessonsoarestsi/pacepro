@@ -161,6 +161,88 @@
     return estSec * (1 - Math.min(0.15, 0.025 * train));
   }
 
-  const api = { analyze, estimate, project, fmtTime, fmtPace, riegel };
+
+  /* Texto completo da análise (sem IA): junta o resultado do treino com o histórico da pessoa.
+     c = { a: análise, day: { title, targetPace }, feel: { rpe, pain, sleep }, cmp: { msg, tone, trend }, gapDays, runs28: { n, km },
+           hasHistory, returning, load (7 dias / média do mês), weight: { diff, since }, auto: [frases], tip, next: { title, when }, wx: { tempC } }
+     Devolve { tone, parts: [{ h, p }] }. */
+  function report(c) {
+    const a = c.a, m = a.metrics || {}, t = a.type, f = c.feel || null, day = c.day || {};
+    const hard = ['interval', 'threshold', 'test', 'race'].includes(t);
+    const parts = [];
+    const join = arr => arr.filter(Boolean).join(' ');
+    const good = a.points.filter(p => p.tone === 'good').map(p => p.txt);
+    const off = a.points.filter(p => p.tone === 'warn' || p.tone === 'bad').map(p => p.txt);
+    const tName = { easy: 'treino leve', threshold: 'treino de limiar', interval: 'intervalado', test: 'teste', race: 'prova' }[t] || 'treino';
+    const kg = n => n.toFixed(1).replace('.', ',');
+    const gap = c.gapDays != null && c.gapDays >= 10 ? c.gapDays : null;
+
+    // 1) Cumpriu o planejado?
+    let p1;
+    if (t === 'test' || t === 'race') {
+      p1 = join([`${t === 'race' ? 'Prova' : 'Teste'} concluído: ${m.distKm.toFixed(2).replace('.', ',')} km em ${fmtTime(m.time)}.`, ...a.points.filter(p => !/Cadência/.test(p.txt)).map(p => p.txt)]);
+    } else if (a.status === 'ok') {
+      p1 = join([`Sim, o ${tName}${day.title ? ` (${day.title})` : ''} cumpriu o planejado.`, ...good.slice(0, 3)]);
+    } else {
+      p1 = join([a.status === 'bad' ? `Não, o ${tName} ficou abaixo do planejado.` : `Em parte. O ${tName} saiu perto do planejado, mas com pontos fora.`,
+        `O que ficou fora: ${off.join(' ')}`, good.length ? `O que deu certo: ${good.slice(0, 2).join(' ')}` : '']);
+    }
+    parts.push({ h: 'Cumpriu o planejado?', p: p1 });
+
+    // 2) Por quê: sinais do dia e do histórico
+    const why = [];
+    if (gap) why.push(`Você ficou ${gap} dias sem correr antes deste treino. Depois de uma pausa, o corpo leva de 1 a 2 semanas para voltar ao ritmo de antes, então FC mais alta e ritmo mais lento são esperados.`);
+    else if (c.returning) why.push('Você está no começo de um plano de retomada depois de uma pausa: as primeiras semanas servem para o corpo se readaptar, sem cobrar ritmo.');
+    else if (c.hasHistory && c.runs28 && c.runs28.n === 0) why.push('Não encontrei corridas nas 4 semanas antes deste treino, o que pesa no fôlego e na FC.');
+    if (f && f.sleep && f.sleep <= 5) why.push(`Você dormiu ${f.sleep}h ou menos na noite anterior. Pouco sono sobe a FC e deixa o ritmo mais pesado.`);
+    else if (f && f.sleep === 6 && a.status !== 'ok') why.push('Seis horas de sono na noite anterior podem ter pesado.');
+    if (f && f.pain === 'forte') why.push('Você registrou dor forte, o que muda a passada e o ritmo.');
+    else if (f && f.pain === 'leve' && a.status !== 'ok') why.push('Você registrou dor leve, que costuma travar um pouco o ritmo.');
+    if (f && f.rpe) {
+      if (t === 'easy' && f.rpe >= 7) why.push(`Você marcou esforço ${f.rpe}/10 num treino que deveria ser leve (o ideal é 3 a 4).`);
+      else if (hard && f.rpe <= 4 && a.status !== 'ok') why.push(`Esforço ${f.rpe}/10 num treino forte indica que dava para apertar mais.`);
+      else if (hard && f.rpe >= 9 && a.status !== 'ok') why.push(`Você marcou esforço ${f.rpe}/10: deu tudo e mesmo assim não chegou no alvo, sinal de cansaço acumulado ou de um alvo puxado para o momento.`);
+    }
+    if (c.load && c.load > 1.3) why.push(`Os 7 dias antes deste treino tiveram ${Math.round((c.load - 1) * 100)}% mais volume que a sua média do mês. O cansaço acumulado explica parte do resultado.`);
+    if (c.wx && c.wx.tempC >= 28 && a.status !== 'ok') why.push(`Fazia cerca de ${Math.round(c.wx.tempC)} °C, e calor sobe a FC e derruba o ritmo.`);
+    if (c.weight && c.weight.diff >= 1) why.push(`Seu peso subiu ${kg(c.weight.diff)} kg desde ${c.weight.since}. Cada kg a mais custa alguns segundos por km.`);
+    if (c.weight && c.weight.diff <= -1) why.push(`Seu peso caiu ${kg(-c.weight.diff)} kg desde ${c.weight.since}, o que ajuda no ritmo.`);
+    if (c.runs28 && c.runs28.n >= 8 && !gap && a.status === 'ok') why.push(`A regularidade ajuda: foram ${c.runs28.n} corridas nas 4 semanas antes deste treino.`);
+    if (a.status !== 'ok' && t !== 'test' && t !== 'race') {
+      if (!why.length) why.push(f ? 'Os dados não mostram um motivo claro (sono, dor, pausa e volume estão normais). Percurso, horário e alimentação também influenciam; um dia abaixo não muda a tendência.'
+        : 'Os dados não mostram um motivo claro. Registre o esforço, a dor e o sono em "Como foi" para a análise apontar a causa.');
+      parts.push({ h: 'Por que não saiu como planejado', p: join(why) });
+    } else if (why.length) parts.push({ h: 'O que pesou neste treino', p: join(why) });
+
+    // 3) Comparado com os treinos anteriores
+    const hist = [];
+    if (c.cmp && c.cmp.msg) hist.push(`Comparado com o último treino igual: ${c.cmp.msg}`);
+    if (c.cmp && c.cmp.trend) hist.push(c.cmp.trend);
+    if (!hist.length) hist.push('Ainda não há um treino igual recente para comparar. A comparação aparece a partir da próxima vez.');
+    if (c.runs28 && c.runs28.n > 0 && !(c.runs28.n >= 8 && a.status === 'ok')) hist.push(`Nas 4 semanas antes deste treino foram ${c.runs28.n} corrida${c.runs28.n === 1 ? '' : 's'} (${kg(c.runs28.km)} km).`);
+    parts.push({ h: 'Comparado com os treinos anteriores', p: join(hist) });
+
+    // 4) O que muda no plano
+    const auto = (c.auto || []).filter(Boolean);
+    const adj = [auto.length ? join(auto) : 'Nada muda automaticamente: o plano segue como está.', c.tip || '', c.next ? `Próximo treino-chave: ${c.next.title} (${c.next.when}).` : ''];
+    parts.push({ h: 'O que muda nos próximos treinos', p: join(adj) });
+
+    // 5) Fechamento
+    let end;
+    const goalHit = (t === 'test' || t === 'race') && a.points.some(p => /Meta alcançada/.test(p.txt));
+    if (goalHit) end = 'Parabéns, meta alcançada! Todo o trabalho das últimas semanas apareceu aqui. Aproveite o momento e recupere bem.';
+    else if (t === 'test' || t === 'race') end = `Parabéns por ${t === 'race' ? 'completar a prova' : 'fazer o teste'}! Agora você sabe exatamente onde está, e é a partir daqui que o plano trabalha.`;
+    else if (a.status === 'ok' && (gap || c.returning)) end = 'Parabéns pela volta! Retomar com controle é a parte mais difícil, e você fez do jeito certo. Mantenha a regularidade nas próximas semanas.';
+    else if (a.status === 'ok') end = t === 'easy' ? 'Parabéns! Treino leve feito no leve é o que mais gente erra, e você acertou. É ele que constrói a base para os treinos fortes.' : 'Parabéns pelo treino! Bater o alvo num treino forte é exatamente o que leva ao resultado na prova.';
+    else if (gap || c.returning) end = 'Voltar depois de uma pausa é assim mesmo: as primeiras corridas parecem pesadas. O importante foi ter voltado. Siga com calma e regularidade que o ritmo volta em poucas semanas.';
+    else if (a.status === 'warn') end = 'Bom treino, mesmo com ressalvas. Ele entrou na conta da semana e é a soma das semanas que leva à prova. Ajuste o detalhe acima no próximo.';
+    else end = 'Dias assim fazem parte de qualquer preparação, e ter ido treinar já conta. Descanse, cuide do sono e volte no próximo treino com calma: a evolução aparece na sequência, não num treino só.';
+    if (f && f.pain === 'forte') end += ' Se a dor continuar, procure uma avaliação antes de voltar aos treinos fortes.';
+    parts.push({ h: a.status === 'ok' || goalHit ? 'Parabéns' : 'Força para o próximo', p: end });
+
+    return { tone: a.status, parts };
+  }
+
+  const api = { analyze, estimate, project, report, fmtTime, fmtPace, riegel };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.Analysis = api;
 })(typeof window !== 'undefined' ? window : globalThis);

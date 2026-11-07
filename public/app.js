@@ -776,16 +776,17 @@
     let html = `<div class="wk-top"><div><span class="eyebrow">${day.recovery ? `Recuperação · dia ${day.recovery} de 7` : esc(TYPE_LABEL[day.type] + also)}${day.key && isRun ? ' · treino-chave' : ''}</span><h3>${esc(day.title)}</h3></div>` +
       (st ? `<span class="chip good">${CHECK}Feito</span>` : '') + `</div>`;
     if (isRun) {
+      const H = hrT();
       const hero = [];
       if (day.targetPace) hero.push(['Ritmo-alvo', A.fmtPace(day.targetPace), '/km'], ['Na esteira', (3600 / day.targetPace).toFixed(1).replace('.', ','), 'km/h']);
-      if (day.type === 'easy' || day.type === 'threshold') hero.push(['FC', day.type === 'easy' ? '≤145' : '150–165', 'bpm']);
+      if (day.type === 'easy' || day.type === 'threshold') hero.push(['FC', day.type === 'easy' ? `≤${H.easy}` : `${H.thr[0]}–${H.thr[1]}`, 'bpm']);
       if (hero.length) html += `<div class="hero">${hero.map(([l, v, u]) => `<div><span>${l}</span><b${v.length > 5 && hero.length > 2 ? ' class="sm"' : ''}>${v}</b><small>${u}</small></div>`).join('')}</div>`;
     }
     html += `<div class="blocks">`;
     if (isRun) {
-      html += `<div class="blk run"><span class="k">Corrida</span><dl class="kv"><dt>Rua</dt><dd>${esc(noEmoji(day.rua))}</dd>${day.esteira ? `<dt>Esteira</dt><dd>${esc(day.esteira)}${/\d$/.test(day.esteira) ? ' km/h' : ''}${/\d/.test(day.esteira) ? ' · incl. 1%' : ''}</dd>` : ''}</dl>` +
+      html += `<div class="blk run"><span class="k">Corrida</span><dl class="kv"><dt>Rua</dt><dd>${esc(hrFix(noEmoji(day.rua)))}</dd>${day.esteira ? `<dt>Esteira</dt><dd>${esc(day.esteira)}${/\d$/.test(day.esteira) ? ' km/h' : ''}${/\d/.test(day.esteira) ? ' · incl. 1%' : ''}</dd>` : ''}</dl>` +
         (day.paceFrom ? `<p class="note"><b>Ritmo atualizado pelo teste</b> (antes ${A.fmtPace(day.paceFrom)}/km).</p>` : day.paceNew ? '<p class="note"><b>Ritmo-alvo calculado pelo seu teste.</b></p>' : '') +
-        `<p class="note">${TIP[day.type] || ''} Aquecimento 10' leve e desaquecimento 5–10'.</p></div>`;
+        `<p class="note">${hrFix(TIP[day.type] || '')} Aquecimento 10' leve e desaquecimento 5–10'.</p></div>`;
       if (!st && day.date >= addDays(today, -1)) html += wxBlock(day);
     }
     // Sessão que não é corrida: título, o treino completo (quando é mais que o título) e uma dica.
@@ -797,7 +798,7 @@
     if (day.gym) html += gymBlock(day.gym, day, (!isRun && !isCross(day.type)) || day.type === 'gym');
     const nGym = day.gym && day.type !== 'gym' ? 1 : 0;
     (day.seconds || []).forEach((y, i) => { html += sessBlk(y.type, y.title, y.rua, `${i + 2 + nGym}º treino · ${TYPE_LABEL[y.type] || 'Treino'}`); });
-    if (day.type === 'rest' && !day.gym) html += `<p class="muted">${esc(day.rua && !/^descanso$/i.test(day.rua) ? noEmoji(day.rua) : 'Descanso total. Sono, água e boa comida.')}</p>`;
+    if (day.type === 'rest' && !day.gym) html += `<p class="muted">${esc(day.rua && !/^descanso$/i.test(day.rua) ? hrFix(noEmoji(day.rua)) : 'Descanso total. Sono, água e boa comida.')}</p>`;
     const adj = day.movedFrom ? `Treino de ${WD[D(day.movedFrom).getDay()]} ${ddmm(day.movedFrom)} remarcado para hoje.` : day.movedTo ? '' : day.skipped ? '' : day.softened ? `Era "${day.softened}". Trocado por leve para recuperar.` : '';
     if (day.movedFrom || day.movedTo || day.skipped || day.softened) html += `<div class="blk adj"><span class="k">Plano ajustado</span>${adj ? `<p class="note">${esc(adj)}</p>` : ''}<button class="linkbtn" id="undoAdj" type="button">Desfazer ajuste</button></div>`;
     if (!st) html += raceDayBlock(day);
@@ -882,8 +883,20 @@
     reTried.add(day.date);
     try {
       const act = await api(`/api/strava/activity?id=${encodeURIComponent(r.stravaId)}`);
-      const o = { ...(done[day.date] || {}), at: Date.now(), activityId: act.id, name: act.name, analysis: A.analyze(act, day, { goalSec: goalSec(), distanceKm: distKm() }) };
+      const o = { ...(done[day.date] || {}), at: Date.now(), activityId: act.id, name: act.name, analysis: A.analyze(act, day, { goalSec: goalSec(), distanceKm: distKm(), hr: hrOpt() }) };
       delete o.sx; done[day.date] = o;
+      persist(); renderAll();
+    } catch (e) {}
+  }
+  // As faixas de FC mudaram desde a análise (chegaram treinos novos): refaz a análise com as faixas atuais.
+  const hrTried = new Set();
+  async function refreshHr(day, id) {
+    if (!strava.connected || busy || hrTried.has(day.date)) return;
+    hrTried.add(day.date);
+    try {
+      const act = await api(`/api/strava/activity?id=${encodeURIComponent(id)}`);
+      if (!done[day.date] || String(done[day.date].activityId) !== String(id)) return;
+      done[day.date] = { ...done[day.date], at: Date.now(), analysis: A.analyze(act, day, { goalSec: goalSec(), distanceKm: distKm(), hr: hrOpt() }) };
       persist(); renderAll();
     } catch (e) {}
   }
@@ -891,7 +904,7 @@
     busy = true; say('Analisando o treino…');
     try {
       const act = await api(`/api/strava/activity?id=${encodeURIComponent(id)}`);
-      const an = A.analyze(act, day, { goalSec: goalSec(), distanceKm: distKm() });
+      const an = A.analyze(act, day, { goalSec: goalSec(), distanceKm: distKm(), hr: hrOpt() });
       done[day.date] = { at: Date.now(), activityId: act.id, name: act.name, analysis: an };
       maybeSetTest(day, an);
       persist();
@@ -905,6 +918,7 @@
     const st = day && done[day.date];
     if (!st || !st.analysis) { box.hidden = true; if (st && st.sx) reanalyze(day); return; }
     const a = st.analysis, m = a.metrics;
+    if (['easy', 'threshold'].includes(a.type) && st.activityId) { const h = hrOpt(); if (!a.hr || a.hr.easy !== h.easy || a.hr.thr[0] !== h.thr[0] || a.hr.thr[1] !== h.thr[1]) refreshHr(day, st.activityId); }
     const tone = a.status === 'ok' ? 'good' : a.status;
     const label = a.status === 'ok' ? 'No alvo' : a.status === 'warn' ? 'Atenção' : 'Abaixo';
     const maxP = Math.max(...a.splits.map(s => s.pace), 1), minP = Math.min(...a.splits.map(s => s.pace), maxP);
@@ -1215,7 +1229,7 @@
   }
   $('openFull').onclick = () => {
     const fp = $('fullPlan');
-    if (fp.hidden) { fp.innerHTML = window.marked ? window.marked.parse(noEmoji(plan.raw)) : `<pre style="white-space:pre-wrap">${esc(plan.raw)}</pre>`; fp.hidden = false; $('openFull').textContent = 'Esconder o plano completo'; }
+    if (fp.hidden) { fp.innerHTML = window.marked ? window.marked.parse(hrFix(noEmoji(plan.raw))) : `<pre style="white-space:pre-wrap">${esc(plan.raw)}</pre>`; fp.hidden = false; $('openFull').textContent = 'Esconder o plano completo'; }
     else { fp.hidden = true; $('openFull').textContent = 'Ver o plano completo'; }
   };
 
@@ -1600,7 +1614,7 @@
       if (!r) continue;
       try {
         const act = await api(`/api/strava/activity?id=${encodeURIComponent(r.stravaId)}`);
-        done[d.date] = { at: Date.now(), activityId: act.id, name: act.name, analysis: A.analyze(act, d, { goalSec: goalSec(), distanceKm: distKm() }), auto: true };
+        done[d.date] = { at: Date.now(), activityId: act.id, name: act.name, analysis: A.analyze(act, d, { goalSec: goalSec(), distanceKm: distKm(), hr: hrOpt() }), auto: true };
         maybeSetTest(d, done[d.date].analysis);
         n++;
       } catch (e) { if (e.status === 401 || e.status === 429) break; }
@@ -1623,6 +1637,28 @@
   }
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && Date.now() - lastAuto > 10 * 60 * 1000) syncAndAnalyze(true); });
 
+  /* ---------- FC pessoal: teto do leve e faixa de limiar pelos seus treinos ---------- */
+  // Calculado na hora com as corridas guardadas no aparelho (nada é salvo, segue a regra dos 7 dias do Strava).
+  let hrCache = null;
+  function hrT() {
+    if (hrCache) return hrCache;
+    Promise.resolve().then(() => { hrCache = null; }); // vale só durante esta renderização
+    return (hrCache = hrCalc());
+  }
+  function hrCalc() {
+    const rs = allRuns();
+    const peaks = Object.values(done).map(v => v && v.analysis && v.analysis.metrics && v.analysis.metrics.maxHr).filter(Boolean);
+    const easyRuns = plan ? rs.filter(r => r.hr && r.km >= 2 && r.sec > 0 && !r.trainer && (dayOf(r.date) || {}).type === 'easy').map(r => ({ hr: r.hr, pace: r.sec / r.km })) : [];
+    return A.hrTargets({ hrMax: extra.hrMax, peaks, avgs: rs.filter(r => r.hr && r.km >= 3).map(r => r.hr), easyRuns });
+  }
+  const hrOpt = () => { const h = hrT(); return { easy: h.easy, thr: h.thr }; };
+  // Troca os 145 e 150–165 escritos no plano pelos valores da pessoa.
+  function hrFix(txt) {
+    if (!txt) return txt;
+    const h = hrT(); if (h.easy === 145 && h.thr[0] === 150 && h.thr[1] === 165) return txt;
+    return String(txt).replace(/((?:FC|passar de|até ~?)[^\d\n|]{0,14}|≤\s?)145\b/g, `$1${h.easy}`).replace(/150\s?[–-]\s?165/g, `${h.thr[0]}–${h.thr[1]}`).replace(/150 e 165/g, `${h.thr[0]} e ${h.thr[1]}`);
+  }
+
   /* ---------- Zonas de frequência cardíaca ---------- */
   const ZCOL = ['var(--z1)', 'var(--c3)', 'var(--good)', 'var(--c2)', 'var(--bad)'];
   function observedMaxHr() {
@@ -1635,6 +1671,8 @@
     if (extra.hrMax) return fromMax(extra.hrMax, 'pela FC máxima informada');
     const m = plan && /Z1\s*(\d{2,3})\s*[–-]\s*(\d{2,3})[^\n]*?Z2\s*(\d{2,3})\s*[–-]\s*(\d{2,3})[^\n]*?Z3\s*(\d{2,3})\s*[–-]\s*(\d{2,3})[^\n]*?Z4\s*(\d{2,3})\s*[–-]\s*(\d{2,3})[^\n]*?Z5\s*(\d{2,3})\s*[–-]\s*(\d{2,3})/.exec(plan.raw);
     if (m) { const v = m.slice(1).map(Number); return { src: 'do plano', max: v[9], z: [0, 1, 2, 3, 4].map(i => [v[2 * i], v[2 * i + 1]]) }; }
+    const h = hrT();
+    if (h.max) return fromMax(h.max, 'pela FC máxima estimada nos seus treinos');
     const o = observedMaxHr();
     return o ? fromMax(o, 'pela maior FC dos seus treinos') : null;
   }
@@ -1662,7 +1700,9 @@
   function renderHr() {
     const Z = hrZones();
     $('hrChip').textContent = Z ? (extra.hrMax ? 'informada' : Z.src === 'do plano' ? 'do plano' : 'estimada') : 'sem dados';
-    $('hrText').textContent = Z ? `Zonas ${Z.src}: ${Z.z.map(([a, b], i) => `Z${i + 1} ${a}–${b}`).join(' · ')}.` : 'Informe sua FC máxima (de um teste ou do relógio) para calcular as zonas.';
+    const h = hrT();
+    $('hrText').textContent = (Z ? `Zonas ${Z.src}: ${Z.z.map(([a, b], i) => `Z${i + 1} ${a}–${b}`).join(' · ')}. ` : 'Informe sua FC máxima (de um teste ou do relógio) para calcular as zonas. ') +
+      `Nos treinos: leve até ${h.easy} e limiar entre ${h.thr[0]} e ${h.thr[1]} (${h.why}). ${h.custom ? 'Esses valores se ajustam sozinhos conforme chegam treinos novos.' : 'Os valores sobem sozinhos se os seus leves mostrarem que o teto está baixo.'}${extra.hrMax ? '' : ' Para baixar, informe sua FC máxima.'}`;
     if (document.activeElement !== $('hrMax')) $('hrMax').value = extra.hrMax || '';
   }
   $('hrForm').onsubmit = e => {
@@ -1711,7 +1751,7 @@
       `<div class="race-sched"><label for="rStart">Horário da largada<input id="rStart" type="time" value="${raceCfg().start}"></label><button class="btn ghost" id="rmOpen2" type="button">Tela da prova</button></div>` +
       `<details class="race"${raceDays() <= 3 ? ' open' : ''}><summary>Horários do dia</summary>${timelineHtml()}</details>` +
       `<details class="race"${raceDays() <= 3 ? ' open' : ''}><summary>Checklist da véspera e do dia</summary>${raceChecksHtml()}</details>` +
-      (sec && window.marked ? `<details class="prose"><summary>Estratégia do seu plano</summary>${window.marked.parse(noEmoji(sec))}</details>` : '');
+      (sec && window.marked ? `<details class="prose"><summary>Estratégia do seu plano</summary>${window.marked.parse(hrFix(noEmoji(sec)))}</details>` : '');
     bindRaceChecks(box);
     $('rmOpen2').onclick = openRaceMode;
     $('rStart').onchange = () => { const v = $('rStart').value; if (!/^\d{2}:\d{2}$/.test(v)) return; extra.race = { ...raceCfg(), start: v }; persist(); renderAll(); };
@@ -1809,7 +1849,7 @@
   function pushPayload(sub) {
     const days = plan ? plan.days.filter(d => d.date >= addDays(today, -2) && d.date <= addDays(today, 21)).map(d => {
       const gymOnly = d.type === 'rest' && d.gym && !d.movedTo && !d.skipped;
-      return { d: d.date, t: gymOnly ? `Musculação ${d.gym}` : d.title + (d.seconds || []).map(y => ` + ${TYPE_LABEL[y.type] || 'treino'}`).join(''), x: gymOnly ? 'Sessão de musculação do plano. Toque para ver os exercícios.' : plain(d.rua), ty: gymOnly ? 'gym' : d.type, k: isHard(d) };
+      return { d: d.date, t: gymOnly ? `Musculação ${d.gym}` : d.title + (d.seconds || []).map(y => ` + ${TYPE_LABEL[y.type] || 'treino'}`).join(''), x: gymOnly ? 'Sessão de musculação do plano. Toque para ver os exercícios.' : hrFix(plain(d.rua)), ty: gymOnly ? 'gym' : d.type, k: isHard(d) };
     }) : [];
     const r = allRaces().find(x => x.date >= today);
     const race = r ? { d: r.date, n: r.id === 'plan' ? '' : r.name } : null;
@@ -2371,7 +2411,7 @@
       if (hd) auto.push(`Por causa de ${fa.why.join(', ')}, o app sugere trocar "${dayOf(hd).title}" de ${fmtD(hd)} por um treino leve. Toque no botão abaixo para aplicar (dá para desfazer).`);
     }
     if (a.status === 'bad' && ['interval', 'threshold'].includes(a.type)) tip = `O app não muda os ritmos por causa de um treino só. No próximo ${a.type === 'interval' ? 'intervalado' : 'limiar'}, mire de novo o mesmo alvo${day.targetPace ? ` de ${A.fmtPace(day.targetPace)}/km` : ''} antes de pensar em subir.`;
-    else if (a.type === 'easy' && a.status !== 'ok') tip = 'No próximo leve, use a FC como guia: passou de 145, diminua ou caminhe até baixar.';
+    else if (a.type === 'easy' && a.status !== 'ok') tip = `No próximo leve, use a FC como guia: passou de ${hrT().easy}, diminua ou caminhe até baixar.`;
     else if (a.status === 'ok' && ['interval', 'threshold'].includes(a.type)) tip = 'O plano segue a progressão normal: o próximo treino forte já vem com um pouco mais de carga.';
     const nx = plan.days.find(d => d.date > date && isHard(d) && !done[d.date]);
     const next = nx ? { title: nx.title, when: fmtD(nx.date) } : null;

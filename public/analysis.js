@@ -25,17 +25,19 @@
     const type = day ? day.type : 'easy';
     const target = day ? day.targetPace : null;
     const goalPace = opts.goalSec ? opts.goalSec / (opts.distanceKm || 5) : 360;
+    // Faixas de FC da pessoa (calculadas no app pelos treinos); sem elas, os valores padrão.
+    const HE = (opts.hr && opts.hr.easy) || HR_EASY, TL = (opts.hr && opts.hr.thr) || [150, 165];
 
-    const res = { type, status: 'ok', headline: '', points: [], metrics: { distKm, time, pace, hr, cadence, maxHr: activity.max_heartrate || null }, splits, estimateSec: null, estimateBasis: '' };
+    const res = { type, hr: { easy: HE, thr: TL }, status: 'ok', headline: '', points: [], metrics: { distKm, time, pace, hr, cadence, maxHr: activity.max_heartrate || null }, splits, estimateSec: null, estimateBasis: '' };
     const add = (txt, tone) => res.points.push({ txt, tone: tone || 'info' });
     const worse = s => { const order = { ok: 0, warn: 1, bad: 2 }; if (order[s] > order[res.status]) res.status = s; };
 
     if (type === 'easy') {
       const mins = plannedMinutes(day && day.rua);
-      const highSplits = splits.filter(s => s.hr && s.hr > HR_EASY + 3).length;
-      if (hr && hr <= HR_EASY + 3) add(`FC média ${hr}: ficou leve de verdade.`, 'good');
-      else if (hr) { add(`FC média ${hr}, acima do teto de ${HR_EASY}. Caminhe mais vezes quando passar.`, 'warn'); worse('warn'); }
-      if (highSplits && splits.length) add(`${highSplits} de ${splits.length} km com FC acima de ${HR_EASY + 3}.`, highSplits > splits.length / 2 ? 'warn' : 'info');
+      const highSplits = splits.filter(s => s.hr && s.hr > HE + 3).length;
+      if (hr && hr <= HE + 3) add(`FC média ${hr}: ficou leve de verdade.`, 'good');
+      else if (hr) { add(`FC média ${hr}, acima do teto de ${HE}. Caminhe mais vezes quando passar.`, 'warn'); worse('warn'); }
+      if (highSplits && splits.length) add(`${highSplits} de ${splits.length} km com FC acima de ${HE + 3}.`, highSplits > splits.length / 2 ? 'warn' : 'info');
       if (mins) { const done = time / 60; if (done < mins * 0.85) { add(`Duração de ${Math.round(done)}' para ${mins}' planejados.`, 'warn'); worse('warn'); } else add(`Duração cumprida: ${Math.round(done)}' de ${mins}'.`, 'good'); }
       res.headline = res.status === 'ok' ? 'Treino leve bem feito' : 'O leve ficou forte demais';
     }
@@ -51,9 +53,9 @@
         if (diff < -15) { add(`Bloco principal a ${fmtPace(wp)}/km, ${Math.round(-diff)} s mais rápido que o alvo de ${fmtPace(target)}. Rápido demais para um limiar.`, 'warn'); worse('warn'); }
         else if (diff <= 6) add(`Bloco principal a ${fmtPace(wp)}/km, no alvo de ${fmtPace(target)}.`, 'good');
         else if (diff <= 15) { add(`Bloco principal a ${fmtPace(wp)}/km, ${Math.round(diff)} s acima do alvo de ${fmtPace(target)}.`, 'warn'); worse('warn'); }
-        else { add(`Bloco principal a ${fmtPace(wp)}/km, bem acima do alvo de ${fmtPace(target)}. Pela regra do degrau, repita este ritmo na próxima semana.`, 'bad'); worse('bad'); }
+        else { add(`Bloco principal a ${fmtPace(wp)}/km, bem acima do alvo de ${fmtPace(target)}. Na próxima semana, faça o mesmo treino num ritmo um pouco mais lento (ajuste de 5 a 10 s/km) e só aperte depois de repetir o alvo.`, 'bad'); worse('bad'); }
       }
-      if (wh) add(wh > 167 ? `FC no bloco ${wh}: acima da faixa de limiar (150–165).` : wh < 148 ? `FC no bloco ${wh}: abaixo da faixa de limiar, dava para apertar.` : `FC no bloco ${wh}, dentro da faixa de limiar.`, wh > 167 ? 'warn' : 'good');
+      if (wh) add(wh > TL[1] + 2 ? `FC no bloco ${wh}: acima da faixa de limiar (${TL[0]}–${TL[1]}).` : wh < TL[0] - 2 ? `FC no bloco ${wh}: abaixo da faixa de limiar, dava para apertar.` : `FC no bloco ${wh}, dentro da faixa de limiar.`, wh > TL[1] + 2 ? 'warn' : 'good');
       const workMin = work.reduce((s, w) => s + (w.time || 0), 0) / 60;
       if (wp && (workMin >= 10 || splits.length >= 3)) { res.estimateSec = (wp - 15) * (opts.distanceKm || 5); res.estimateBasis = 'ritmo de limiar − 15 s/km'; }
       res.headline = res.status === 'ok' ? 'Limiar no ritmo' : res.status === 'warn' ? 'Limiar perto do alvo' : 'Limiar abaixo do alvo';
@@ -90,7 +92,7 @@
             const diff = gp - tgt;
             if (diff <= 5) { txt += `, no alvo de ${fmtPace(tgt)}.`; tone = 'good'; }
             else if (diff <= 12) { txt += `, ${Math.round(diff)} s/km acima do alvo de ${fmtPace(tgt)}.`; tone = 'warn'; worse('warn'); }
-            else { txt += `, ${Math.round(diff)} s/km acima do alvo de ${fmtPace(tgt)}. Repita este degrau.`; tone = 'bad'; worse('bad'); }
+            else { txt += `, ${Math.round(diff)} s/km acima do alvo de ${fmtPace(tgt)}. Na próxima vez, faça o mesmo treino num ritmo um pouco mais lento (5 a 10 s/km) e só aperte depois de repetir o alvo.`; tone = 'bad'; worse('bad'); }
           } else txt += '.';
           if (plan && g.items.length < plan.n) { tone = tone === 'bad' ? 'bad' : 'warn'; worse('warn'); }
           add(txt, tone);
@@ -133,6 +135,29 @@
 
     if (!res.headline) res.headline = 'Corrida registrada';
     return res;
+  }
+
+  /* Faixas de FC pessoais. o = { hrMax (informada), peaks: [FC máx. dos treinos], avgs: [FC média de corridas de 3 km ou mais],
+     easyRuns: [{ hr, pace }] corridas feitas em dias de treino leve }.
+     Base: 76,5% da FC máxima para o teto do leve e 79–87% para o limiar (com FC máx. 190 dá os 145 e 150–165 de antes).
+     Se nem os leves mais lentos ficam abaixo do teto, o teto sobe até a FC desses leves (limite de 82% da FC máx.). */
+  function hrTargets(o) {
+    o = o || {};
+    let max = o.hrMax || null, src = max ? 'informada' : '';
+    if (!max) {
+      const peaks = (o.peaks || []).filter(x => x >= 140 && x <= 215), low = (o.avgs || []).filter(x => x >= 100 && x <= 200).map(x => x / 0.92);
+      // Pico e média só mostram que a FC máxima é pelo menos aquilo: sem valor informado, o ajuste automático só sobe.
+      const est = Math.max(0, ...peaks, ...low);
+      if (est > 190) { max = Math.round(est); src = 'estimada pelos treinos'; }
+    }
+    let floor = null;
+    const er = (o.easyRuns || []).filter(r => r.hr && r.pace).sort((a, b) => b.pace - a.pace);
+    if (er.length >= 3) { const slow = er.slice(0, Math.max(2, Math.ceil(er.length / 3))).map(r => r.hr).sort((a, b) => a - b); floor = slow[Math.floor(slow.length / 2)]; }
+    const m = max || 190;
+    let easy = Math.round(m * 0.765), thr = [Math.round(m * 0.79), Math.round(m * 0.87)], why = max ? `76% da FC máxima ${src}, ${max}` : 'valor padrão';
+    if (floor && floor + 3 > easy) { const cap = Math.round(m * 0.82); const e2 = Math.min(floor + 3, cap); if (e2 > easy) { easy = e2; why = `pela FC média de ${floor} nos seus leves mais lentos${e2 === cap ? ', com limite de 82% da FC máxima' : ''}`; } }
+    if (thr[0] <= easy + 2) thr = [easy + 3, Math.max(thr[1], easy + 15)];
+    return { easy, thr, max, src: max ? src : '', floor, why, custom: !!(max || (floor && easy !== Math.round(m * 0.765))) };
   }
 
   /* runs: [{date:'aaaa-mm-dd', km, sec}] resumos de corrida. done: {data:{analysis}} treinos analisados. */
@@ -243,6 +268,6 @@
     return { tone: a.status, parts };
   }
 
-  const api = { analyze, estimate, project, report, fmtTime, fmtPace, riegel };
+  const api = { analyze, estimate, project, report, hrTargets, fmtTime, fmtPace, riegel };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.Analysis = api;
 })(typeof window !== 'undefined' ? window : globalThis);

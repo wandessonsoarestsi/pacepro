@@ -4,7 +4,7 @@ Documento único com tudo que o app oferece, o que já foi implementado, o que e
 Serve para quem chega agora (pessoa ou IA) entender o projeto sem ler todo o código. A configuração passo a passo
 (Strava, Google, banco, Vercel, webhook, notificações) está no [README](README.md).
 
-Última atualização: 07/11/2026 (até o PR #71).
+Última atualização: 07/11/2026 (até a análise completa em texto).
 
 ---
 
@@ -60,6 +60,7 @@ Depois que o plano existe, o Início mostra o cartão "Último passo" para ativa
 - **Resumo:** ciclo até a prova (barra e dias que faltam), treinos da semana (pílulas) e projeção do tempo na prova.
 - **Treino do dia:** o que fazer na rua e na esteira, ritmo-alvo, musculação do dia (sessão A/B…), clima no horário do treino com ajuste de ritmo pelo calor, bloco do dia da prova.
 - **Marcar como feito** e "Como foi o treino": esforço (1 a 10), dor e sono.
+- **Análise completa em texto** (`A.report` em `analysis.js`, contexto montado em `reportCtx` no `app.js`): diz se o treino cumpriu o planejado e, se não, o porquê (pausa antes do treino, plano de retomada, sono, dor, esforço, volume da semana, peso), compara com os treinos iguais e as 4 semanas anteriores, explica o que muda no plano (ritmos do teste, projeção, sugestão de trocar o próximo treino forte por leve, com botão) e fecha com parabéns ou incentivo. Sem IA e sem função nova.
 - **Análise do treino** (quando há corrida do Strava ligada ao dia): nota contra o planejado ("no alvo", "atenção", "abaixo") olhando a parte principal, análise km a km em texto, tempo em cada zona de FC, comparação com treinos iguais anteriores, mapa do percurso.
 - **Ajuste do plano:** treino-chave que ficou sem fazer pode ir para outro dia da semana ou ser pulado; sinais de cansaço sugerem trocar o próximo treino forte por leve. Tudo pode ser desfeito.
 - Cartões laterais: "Modalidades e metas" (plano híbrido), últimos treinos com miniatura do percurso (ou desenho de esteira nos indoor), próximo objetivo, resumo da semana.
@@ -144,7 +145,7 @@ Arquivo: `public/plan-generator.js` (funciona no navegador e no Node). Saída: M
 | `sub30.planmd`, `sub30.done` | Chaves da versão antiga do site, lidas só para migrar. |
 
 `extra` guarda: `feel` (esforço, dor, sono), `weights`, `diet`, `moves` (treinos movidos), `skips` (pulados), `soft` (trocados por leve),
-`dismiss`, `hrMax`, `races` (calendário de provas), `race` e `next` (resultado da prova e próximo objetivo), `test` (teste de 5 km),
+`dismiss`, `hrMax`, `level` e `levelAt` (momento escolhido no gerador, ex.: voltando de pausa), `races` (calendário de provas), `race` e `next` (resultado da prova e próximo objetivo), `test` (teste de 5 km),
 `acts` (atividades além da corrida), `wx` (clima), `metroBpm` (metrônomo), `fresh` (primeira visita) e `hidePlanRace`.
 
 O sininho guarda as notificações recebidas num IndexedDB próprio.

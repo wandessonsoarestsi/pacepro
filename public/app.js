@@ -911,11 +911,11 @@
     const bars = a.splits.length >= 2 ? `<div class="bars" aria-label="Ritmo por km">${a.splits.map(s => `<i title="${A.fmtPace(s.pace)}/km" style="height:${(30 + 70 * (maxP - s.pace) / Math.max(1, maxP - minP)).toFixed(0)}%"></i>`).join('')}</div><p class="muted small">Ritmo por km (barra mais alta = mais rápido): ${a.splits.map(s => A.fmtPace(s.pace)).join(' · ')}</p>` : '';
     box.innerHTML = `<div class="card-head"><div><span class="eyebrow">Análise do treino</span><h3>${esc(a.headline)}</h3></div><span class="chip ${tone}">${label}</span></div>` +
       `<div class="metrics"><div class="metric"><span>Distância</span><b>${m.distKm.toFixed(2).replace('.', ',')}</b></div><div class="metric"><span>Tempo</span><b>${A.fmtTime(m.time)}</b></div><div class="metric"><span>Ritmo</span><b>${m.pace ? A.fmtPace(m.pace) : '–'}</b></div><div class="metric"><span>FC</span><b>${m.hr || '–'}</b></div></div>` +
-      (st.activityId ? '<div id="rmapSlot"></div>' : '') + bars + (() => { const Z = hrZones(); const zb = Z ? zoneBar(zoneTimes(a.splits, Z)) : ''; return zb ? `<div><span class="eyebrow">Tempo por zona de FC</span>${zb}</div>` : ''; })() + `<ul class="points">${a.points.map(p => `<li class="${p.tone}">${esc(p.txt)}</li>`).join('')}</ul>` + compareHtml(day.date) +
-      (a.estimateSec ? `<p class="msg good">Este treino indica ${A.fmtTime(a.estimateSec)} nos ${distKm()} km (${esc(a.estimateBasis)}). A estimativa foi atualizada.</p>` : '') +
+      reportHtml(day) + (st.activityId ? '<div id="rmapSlot"></div>' : '') + bars + (() => { const Z = hrZones(); const zb = Z ? zoneBar(zoneTimes(a.splits, Z)) : ''; return zb ? `<div><span class="eyebrow">Tempo por zona de FC</span>${zb}</div>` : ''; })() + `<ul class="points">${a.points.map(p => `<li class="${p.tone}">${esc(p.txt)}</li>`).join('')}</ul>` + compareHtml(day.date) +
       `<div class="row-actions between"><button class="btn ghost sm" id="shareW" type="button">Compartilhar</button>${st.activityId ? `<a class="strava-link" href="https://www.strava.com/activities/${encodeURIComponent(st.activityId)}" target="_blank" rel="noopener">View on Strava</a>` : ''}</div>` + (st.activityId ? PWR : '');
     box.hidden = false;
     $('shareW').onclick = () => shareWorkout(day);
+    const rs = $('repSoft'); if (rs) rs.onclick = () => { extra.soft[rs.dataset.d] = true; refreshAdjust(); showToast('Treino trocado por leve.'); };
     if (st.activityId) mountRouteMap('card', $('rmapSlot'), st.activityId, day);
   }
 
@@ -1477,6 +1477,7 @@
         const curTyped = toSec($('gCur').value);
         if (curTyped) done._base = { date: today, sec: curTyped };
         resetPlanExtras();
+        extra.level = $('gLevel').value; extra.levelAt = start;
         setPlanMd(md, 'gerado no app'); track('plano-gerado');
         msg.className = 'msg good';
         msg.textContent = `Plano novo em uso: ${p.weeks.length} semanas até ${ddmm(p.race)}.${cur || !on.some(k => ['run', 'tri', 'hyrox'].includes(k)) ? '' : ' Sem corridas registradas, usei uma estimativa a partir da meta; informe seu tempo atual para ajustar.'}`;
@@ -1534,6 +1535,12 @@
     if (strong) why.push('dor forte');
     else if (recent.filter(([, f]) => f.pain === 'leve').length >= 2) why.push('dor leve repetida');
     if (recent.filter(([, f]) => f.sleep && f.sleep <= 5).length >= 2) why.push('poucas horas de sono');
+    // Pelos treinos analisados nos últimos 3 dias: volta de pausa ou treino forte abaixo do alvo com esforço máximo.
+    Object.entries(done).filter(([d, v]) => d[0] !== '_' && d <= today && d >= addDays(today, -3) && v && v.analysis).forEach(([d, v]) => {
+      const g = gapBefore(d), fe = extra.feel[d];
+      if (g != null && g >= 10 && !why.some(w => /sem correr/.test(w))) why.push(`volta depois de ${g} dias sem correr`);
+      if (v.analysis.status === 'bad' && ['interval', 'threshold'].includes(v.analysis.type) && fe && fe.rpe >= 8 && !why.some(w => /abaixo do alvo/.test(w))) why.push('treino forte abaixo do alvo mesmo com esforço alto');
+    });
     return { why, strong };
   }
 
@@ -2318,6 +2325,64 @@
     shareBlob(blob, `pacepro-evolucao-${today}.png`, 'Minha evolução no PacePro');
   }
   $('shareProg').onclick = () => shareProgress();
+
+  /* ---------- Análise completa em texto ---------- */
+  // Datas com corrida (Strava ou treino de corrida marcado como feito).
+  function runDates() {
+    const s = new Set(allRuns().map(r => r.date));
+    Object.entries(done).forEach(([d, v]) => { if (d[0] !== '_' && v) { const pd = plan && dayOf(d); if (v.analysis || (pd && isRunType(pd.type))) s.add(d); } });
+    return [...s].sort();
+  }
+  // Dias sem correr antes de "date" (null se não há registro anterior).
+  function gapBefore(date) {
+    const prev = runDates().filter(d => d < date).pop();
+    return prev ? Math.round((D(date) - D(prev)) / 864e5) - 1 : null;
+  }
+  function reportCtx(day) {
+    const date = day.date, a = done[date].analysis;
+    const fmtD = dt => `${WD[D(dt).getDay()]}, ${ddmm(dt)}`;
+    // Histórico das 4 semanas anteriores
+    const from = addDays(date, -28), rs = allRuns().filter(r => r.date >= from && r.date < date);
+    const nDates = runDates().filter(d => d >= from && d < date).length;
+    const runs28 = { n: Math.max(nDates, rs.length), km: rs.reduce((x, r) => x + r.km, 0) };
+    const acute = kmBetween(addDays(date, -7), addDays(date, -1)), chronic = kmBetween(addDays(date, -28), addDays(date, -1)) / 4;
+    const load = chronic > 0.5 && acute > 0 ? acute / chronic : null;
+    // Peso: último registro até o dia contra o de 4 a 8 semanas antes
+    let weight = null;
+    const W = (extra.weights || []).filter(w => w.date <= date), lw = W[W.length - 1];
+    if (lw && lw.date >= addDays(date, -30)) { const w0 = W.find(w => w.date >= addDays(date, -56) && w.date <= addDays(lw.date, -14)); if (w0 && Math.abs(lw.kg - w0.kg) >= 1) weight = { diff: lw.kg - w0.kg, since: ddmm(w0.date) }; }
+    // Comparação com treinos iguais
+    let cmp = null; const prev = similarPast(date);
+    if (prev.length && a.metrics.pace) {
+      const c = workOf(a), p = workOf(prev[0].a);
+      cmp = cmpVerdict(Math.round(c.pace - p.pace), c.hr && p.hr ? c.hr - p.hr : null);
+      if (prev.length >= 2) { const o = prev[prev.length - 1], po = workOf(o.a); if (po.pace) { const d = Math.round(c.pace - po.pace); cmp.trend = `Desde ${ddmm(o.date)}, nas últimas ${prev.length + 1} vezes deste treino, o ritmo ${d <= -3 ? `melhorou ${-d} s/km` : d >= 3 ? `piorou ${d} s/km` : 'ficou estável'} (${A.fmtPace(po.pace)} → ${A.fmtPace(c.pace)}/km).`; } }
+    }
+    // O que o app muda
+    const auto = [];
+    let tip = '', hd = null;
+    if (extra.test && extra.test.date === date) { const tp = testPaces(); auto.push(`Os ritmos das próximas semanas foram recalculados com este teste${tp ? `: limiar ${fmtP5(tp.p.threshold)}/km e intervalado ${fmtP5(tp.p.interval)}/km` : ''}.`); }
+    if (a.estimateSec) auto.push(`A projeção de prova foi atualizada: este treino indica ${A.fmtTime(a.estimateSec)} nos ${distKm()} km (${a.estimateBasis}).`);
+    const softened = plan.days.find(d => d.date > date && d.date <= addDays(date, 3) && d.softened);
+    if (softened) auto.push(`O treino "${softened.softened}" de ${fmtD(softened.date)} foi trocado por um leve para você recuperar.`);
+    else if (date >= addDays(today, -3)) {
+      const fa = fatigue();
+      hd = fa.why.length ? [0, 1, 2].map(i => addDays(today, i)).find(dt => { const d = dayOf(dt); return d && isHard(d) && !done[dt] && !extra.dismiss['f' + dt]; }) : null;
+      if (hd) auto.push(`Por causa de ${fa.why.join(', ')}, o app sugere trocar "${dayOf(hd).title}" de ${fmtD(hd)} por um treino leve. Toque no botão abaixo para aplicar (dá para desfazer).`);
+    }
+    if (a.status === 'bad' && ['interval', 'threshold'].includes(a.type)) tip = `O app não muda os ritmos por causa de um treino só. No próximo ${a.type === 'interval' ? 'intervalado' : 'limiar'}, mire de novo o mesmo alvo${day.targetPace ? ` de ${A.fmtPace(day.targetPace)}/km` : ''} antes de pensar em subir.`;
+    else if (a.type === 'easy' && a.status !== 'ok') tip = 'No próximo leve, use a FC como guia: passou de 145, diminua ou caminhe até baixar.';
+    else if (a.status === 'ok' && ['interval', 'threshold'].includes(a.type)) tip = 'O plano segue a progressão normal: o próximo treino forte já vem com um pouco mais de carga.';
+    const nx = plan.days.find(d => d.date > date && isHard(d) && !done[d.date]);
+    const next = nx ? { title: nx.title, when: fmtD(nx.date) } : null;
+    const level = extra.level === 'pausa' && extra.levelAt && date <= addDays(extra.levelAt, 20);
+    return { softDate: hd || null, a, day, feel: extra.feel[date] || null, cmp, gapDays: gapBefore(date), runs28, hasHistory: strava.connected, returning: level, load, weight, auto, tip, next };
+  }
+  function reportHtml(day) {
+    let c, r; try { c = reportCtx(day); r = A.report(c); } catch (e) { return ''; }
+    const btn = c.softDate ? `<div class="row-actions"><button class="btn sm" id="repSoft" data-d="${c.softDate}" type="button">Trocar ${WD[D(c.softDate).getDay()]} ${ddmm(c.softDate)} por leve</button></div>` : '';
+    return `<div class="report"><span class="eyebrow">Análise completa</span>${r.parts.map(p => `<div><h4>${esc(p.h)}</h4><p>${esc(p.p)}</p>${/^O que muda/.test(p.h) ? btn : ''}</div>`).join('')}</div>`;
+  }
 
   /* ---------- Comparar com treinos iguais ---------- */
   function similarPast(date, o) {

@@ -104,4 +104,33 @@ t('análise escrita: sem dados de contexto pede o registro de "Como foi"', () =>
   assert.ok(r.parts.some(p => /Como foi/.test(p.p)));
 });
 
+t('FC pessoal: sem dados mantém 145 e 150–165', () => {
+  const h = A.hrTargets({});
+  assert.strictEqual(h.easy, 145); assert.deepStrictEqual(h.thr, [150, 165]); assert.strictEqual(h.custom, false);
+});
+
+t('FC pessoal: FC máxima mais alta sobe o teto do leve', () => {
+  const h = A.hrTargets({ peaks: [200, 230] }); // 230 é leitura errada e fica de fora
+  assert.strictEqual(h.max, 200); assert.strictEqual(h.easy, 153); assert.ok(h.thr[0] > h.easy);
+});
+
+t('FC pessoal: leves lentos acima do teto sobem o teto (com limite)', () => {
+  const easyRuns = [{ hr: 158, pace: 620 }, { hr: 156, pace: 600 }, { hr: 152, pace: 560 }, { hr: 160, pace: 540 }, { hr: 162, pace: 530 }, { hr: 150, pace: 500 }];
+  const h = A.hrTargets({ peaks: [195], easyRuns });
+  assert.ok(h.easy > Math.round(195 * 0.765)); assert.ok(h.easy <= Math.round(195 * 0.82));
+  assert.ok(/leves mais lentos/.test(h.why));
+});
+
+t('FC pessoal: sem FC máxima informada, o ajuste automático não baixa o teto', () => {
+  const h = A.hrTargets({ peaks: [172], avgs: [150] });
+  assert.strictEqual(h.easy, 145);
+});
+
+t('análise usa o teto de FC pessoal', () => {
+  const a = A.analyze(act(5, 2400, 150), { type: 'easy', rua: "40' L" }, { hr: { easy: 152, thr: [156, 170] } });
+  assert.strictEqual(a.status, 'ok'); assert.deepStrictEqual(a.hr, { easy: 152, thr: [156, 170] });
+  const b = A.analyze(act(5, 2400, 150), { type: 'easy', rua: "40' L" }, {});
+  assert.strictEqual(b.status, 'warn');
+});
+
 console.log(`${n} testes passaram`);

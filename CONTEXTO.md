@@ -78,6 +78,7 @@ Depois que o plano existe, o Início mostra o cartão "Último passo" para ativa
 - Gráfico do tempo estimado na prova (estimativa, projeção e meta) e botão "Compartilhar evolução".
 - Volume semanal com a relação de carga 7 dias / 28 dias.
 - Lista de corridas (com "Ver todas") e folha de detalhe de cada uma.
+- **FC pessoal** (`A.hrTargets` em `analysis.js`, `hrT()` no `app.js`): teto do leve e faixa de limiar calculados pelos treinos (76% e 79–87% da FC máxima; o teto sobe até a FC dos leves mais lentos, com limite de 82%). Sem FC máxima informada, o ajuste automático só sobe; os 145 e 150–165 do texto do plano são trocados na hora de mostrar. Nada é salvo (segue a regra dos 7 dias).
 - Resumo da semana, zonas de FC, cadência com metrônomo, alimentação do dia e registro de peso.
 
 ### Provas
